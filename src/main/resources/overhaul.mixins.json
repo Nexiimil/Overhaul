@@ -1,0 +1,16 @@
+{
+	"required": true,
+	"package": "com.overhaul.mixin",
+	"compatibilityLevel": "JAVA_21",
+	"mixins": [
+		"AbstractSkeletonMixin",
+		"AnvilMenuMixin",
+		"CreeperMixin",
+		"EnchantingTableBlockMixin",
+		"EndermanTakeBlockGoalMixin",
+		"MobGoalAccess",
+		"MobTargetMixin",
+		"PackRepositoryMixin"
+	],
+	"injectors": { "defaultRequire": 1 }
+}

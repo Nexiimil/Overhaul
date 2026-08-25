@@ -1,0 +1,26 @@
+{
+	"schemaVersion": 1,
+	"id": "overhaul",
+	"version": "${version}",
+	"name": "Overhaul",
+	"description": "A modular overhaul: food, backpacks, magic and mobs.",
+	"authors": ["nexiimil"],
+	"contact": {},
+	"license": "MIT",
+	"icon": "assets/overhaul/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": ["com.overhaul.Overhaul"],
+		"client": ["com.overhaul.client.OverhaulClient"]
+	},
+	"mixins": [
+		"overhaul.mixins.json",
+		{ "config": "overhaul.client.mixins.json", "environment": "client" }
+	],
+	"depends": {
+		"fabricloader": ">=0.19.0",
+		"minecraft": "~26.2",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
