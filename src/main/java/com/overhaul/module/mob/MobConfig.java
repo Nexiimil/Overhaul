@@ -18,6 +18,7 @@ public class MobConfig {
 			+ "individual mobs; multipliers are relative to their vanilla values.";
 
 	public Teams teams = new Teams();
+	public Hordes hordes = new Hordes();
 	public Zombies zombies = new Zombies();
 	public Skeletons skeletons = new Skeletons();
 	public Creepers creepers = new Creepers();
@@ -35,6 +36,91 @@ public class MobConfig {
 		public boolean preventTargeting = true;
 
 		public Map<String, List<String>> members = new LinkedHashMap<>();
+	}
+
+	/**
+	 * A faction that comes for you on a bad night.
+	 *
+	 * <p>Hordes are the payoff for the team system rather than a separate feature: a group drawn
+	 * from one faction cannot defuse itself on the way over, so what arrives is what set out. The
+	 * gate is local difficulty, which already rises with how long you have lived in a chunk — so
+	 * the place you have settled is the place that eventually comes looking, and a fresh spawn is
+	 * left alone.
+	 *
+	 * <p>Members are gathered from the teammates already loaded nearby before any are spawned, so a
+	 * horde makes an area that is already dangerous worse rather than doubling the mob count.
+	 */
+	public static class Hordes {
+		public boolean enabled = true;
+
+		/**
+		 * Hordes only form after dark. A dimension with no day cycle, such as the Nether or the
+		 * End, counts as permanently dark — which is the intent, since there is no night there to
+		 * wait for. Turn this off to let them form in daylight too.
+		 */
+		public boolean requiresNight = true;
+
+		/**
+		 * Local difficulty a chunk must reach before it can produce a horde.
+		 *
+		 * <p>Vanilla's local difficulty is
+		 * {@code difficultyId x (0.75 + worldAge + chunkInhabitedTime + moon)}, so it has a
+		 * different ceiling on each setting: <b>1.5</b> on Easy, <b>4.0</b> on Normal and
+		 * <b>6.75</b> on Hard, against floors of 1.5, 1.5 and 2.25 in a brand new chunk.
+		 *
+		 * <p>The default sits above Easy's ceiling on purpose — hordes are something the harder
+		 * settings opt into. On Normal it wants a world some way in and a chunk that has been lived
+		 * in; on Hard it comes into reach early. Raise it towards 4 to make them rare, or drop it
+		 * below 1.5 to have them everywhere on any setting.
+		 */
+		public float minLocalDifficulty = 2.5F;
+
+		/** Which faction a horde is drawn from, per dimension. A dimension with no team never forms one. */
+		public Map<String, String> teamsByDimension = new LinkedHashMap<>();
+
+		public int minSize = 4;
+		public int maxSize = 12;
+
+		/** Extra members per point of local difficulty above {@link #minLocalDifficulty}. */
+		public float sizePerDifficulty = 1.5F;
+
+		/** How far out teammates are gathered from before the rest are spawned. */
+		public int recruitRadius = 40;
+
+		/** Ring around the player that topped-up members spawn into, in blocks. */
+		public int spawnRadiusMin = 12;
+		public int spawnRadiusMax = 28;
+
+		/** Only spawn where a hostile mob could normally stand in the dark. */
+		public boolean requireDarkSpawn = true;
+
+		/** How often a player is considered for a horde. */
+		public int checkIntervalTicks = 200;
+
+		/**
+		 * Chance a qualifying player actually gets one on any given check. Low on purpose: a night
+		 * is about 9000 ticks, so at the default interval this is a coin toss across a whole night
+		 * rather than something that fires the moment the sun goes down.
+		 */
+		public float chancePerCheck = 0.05F;
+
+		/**
+		 * Quiet spell after a horde ends, before that player can draw another. A full day-night
+		 * cycle by default, so two hordes never stack up in one night.
+		 */
+		public int cooldownTicks = 24000;
+
+		/** How far a horde will follow before it loses interest. */
+		public double leashRadius = 96.0;
+
+		/** How long a player has to stay clear of that radius for the horde to break up. */
+		public int despawnGraceTicks = 600;
+
+		/** A sound and a message when a horde forms, so it reads as an event rather than a spike. */
+		public boolean announce = true;
+
+		/** A bar tracking how many of the horde are left, so the fight has a visible end. */
+		public boolean bossBar = true;
 	}
 
 	public static class Zombies {

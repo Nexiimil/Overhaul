@@ -13,6 +13,7 @@ import com.overhaul.mixin.MobGoalAccess;
 
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -63,6 +64,8 @@ public class MobModule implements OverhaulModule {
 	private record HelpRecord(int summoned, long lastCallTick) {
 	}
 
+	private final HordeManager hordes = new HordeManager();
+
 	public static @Nullable MobConfig config() {
 		return config;
 	}
@@ -102,6 +105,12 @@ public class MobModule implements OverhaulModule {
 		ServerLivingEntityEvents.AFTER_DAMAGE.register(this::afterDamage);
 		ServerLivingEntityEvents.AFTER_DEATH.register(this::afterDeath);
 		ServerEntityEvents.ENTITY_LOAD.register(this::onEntityLoad);
+
+		// A horde is a group that shares a team and a target, so it only means anything while the
+		// teams themselves are switched on — without them the group would turn on itself on the way.
+		if (config.hordes.enabled && config.teams.enabled) {
+			ServerTickEvents.END_SERVER_TICK.register(server -> hordes.tick(server, config));
+		}
 	}
 
 	// Teams --------------------------------------------------------------------------------------

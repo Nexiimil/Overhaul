@@ -50,6 +50,13 @@ final class MobDefaults {
 				"minecraft:ravager",
 				"minecraft:vex")));
 
+		// A horde is drawn from whichever faction belongs in the dimension it forms in, so the same
+		// team lists above decide what comes for you. Illager is deliberately absent: it has its
+		// own arrival in vanilla, and giving it a second one would step on that.
+		config.hordes.teamsByDimension.putIfAbsent("minecraft:overworld", "overworld");
+		config.hordes.teamsByDimension.putIfAbsent("minecraft:the_nether", "nether");
+		config.hordes.teamsByDimension.putIfAbsent("minecraft:the_end", "ender");
+
 		if (config.creepers.effectPool.isEmpty()) {
 			config.creepers.effectPool = new ArrayList<>(List.of(
 					"minecraft:poison",

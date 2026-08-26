@@ -85,6 +85,9 @@ stock, not a wall you build.
 Mobs belong to factions — Overworld, Nether, Ender, Illager — and will not damage or target their
 own. A vanilla horde defuses itself the moment a skeleton clips a creeper. This one doesn't.
 
+And on a bad night one comes for you: a **horde** drawn from a single faction, gated on the local
+difficulty that rises in the chunks you actually live in.
+
 Zombies vary in speed and call for help. Skeletons open fire from 26 blocks. Endermen rearrange your
 builds. Anything badly wounded runs.
 
