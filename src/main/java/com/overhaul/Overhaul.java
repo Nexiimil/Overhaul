@@ -1,6 +1,8 @@
 package com.overhaul;
 
 import com.overhaul.core.ModuleManager;
+import com.overhaul.core.MoonLock;
+import com.overhaul.core.OverhaulCommands;
 import com.overhaul.core.data.RuntimeDataPack;
 import com.overhaul.module.backpack.BackpackModule;
 import com.overhaul.module.magical.MagicalModule;
@@ -29,5 +31,7 @@ public class Overhaul implements ModInitializer {
 
 		ModuleManager.bootstrap();
 		RuntimeDataPack.rebuild();
+		OverhaulCommands.register();
+		MoonLock.register();
 	}
 }

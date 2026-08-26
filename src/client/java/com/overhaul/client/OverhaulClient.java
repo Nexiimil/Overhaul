@@ -1,11 +1,14 @@
 package com.overhaul.client;
 
 import com.overhaul.core.ModuleManager;
+import com.overhaul.core.MoonLock;
+import com.overhaul.core.MoonLockPayload;
 import com.overhaul.module.backpack.OpenBackpackPayload;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.resources.Identifier;
@@ -20,6 +23,7 @@ public class OverhaulClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
 		ModuleManager.initClient();
+		registerMoonLock();
 
 		if (!ModuleManager.isEnabled("backpack")) {
 			return;
@@ -34,5 +38,22 @@ public class OverhaulClient implements ClientModInitializer {
 				}
 			}
 		});
+	}
+
+	/**
+	 * Takes the server's pinned moon phase, if it has one.
+	 *
+	 * <p>Registered whatever the module config says, because the moon is not any one module's: the
+	 * game rule lives on the server, and a client that ignored it would draw the real moon over
+	 * mechanics running on a different one.
+	 *
+	 * <p>Cleared on disconnect so a phase pinned on one server does not follow the player into the
+	 * next world they open.
+	 */
+	private static void registerMoonLock() {
+		ClientPlayNetworking.registerGlobalReceiver(MoonLockPayload.TYPE,
+				(payload, context) -> context.client().execute(() -> MoonLock.applyFromServer(payload.phaseIndex())));
+
+		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> MoonLock.clear());
 	}
 }
