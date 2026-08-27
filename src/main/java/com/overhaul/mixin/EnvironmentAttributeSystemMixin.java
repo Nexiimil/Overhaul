@@ -15,17 +15,25 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Reports a pinned moon phase in place of the real one.
+ * Reports a pinned or rotated moon phase in place of the real one.
  *
  * <p>This is the single point every reader of the moon passes through. The server's own
- * {@code getMoonBrightness} asks this class directly, and so does the client's interpolating probe,
- * which is what feeds the sky renderer and the clock item. Overriding here therefore keeps the moon
- * that is drawn and the moon that drives local difficulty in agreement — putting the override any
- * further down would let the two disagree.
+ * {@code getMoonBrightness} asks this class, and so do the client probe behind the sky renderer,
+ * the clock item, and the moon brightness check that gates mob variant spawns — the first three by
+ * way of {@code EnvironmentAttributeReader}'s defaults, which funnel {@code (attribute, BlockPos)}
+ * and {@code (attribute, Vec3)} down into the three argument {@code getValue} injected below.
+ * Overriding here therefore keeps the moon that is drawn and the moon that drives local difficulty
+ * in agreement — putting the override any further down would let the two disagree.
  *
- * <p>The alternative was to hold the phase by winding the world clock back a day whenever it
- * drifted, which would have meant permanently rewinding world time. World age feeds local
- * difficulty, so that would have quietly suppressed hordes.
+ * <p>The alternative was to bend the moon by winding the world clock, which would have moved world
+ * time. World time feeds local difficulty on a sixty day ramp, so shifting the moon by up to eight
+ * days would have dragged difficulty with it.
+ *
+ * <p>Injected at {@code RETURN} rather than {@code HEAD} because the rotation is relative: it
+ * needs the phase vanilla was about to report. {@code getValue} and {@code getDimensionValue} read
+ * their sampler independently — neither delegates to the other — so a value passes through exactly
+ * one of these and is rotated once. That matters here in a way it would not for the pin, which is
+ * idempotent; rotating twice would land a phase short.
  *
  * <p>Both methods are generic over the attribute's value type and are called for every environment
  * attribute there is, so the guard is an identity comparison against one field and nothing else
@@ -33,26 +41,31 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  */
 @Mixin(EnvironmentAttributeSystem.class)
 public class EnvironmentAttributeSystemMixin {
-	@Inject(method = "getValue", at = @At("HEAD"), cancellable = true)
-	private void overhaul$pinMoonPhase(EnvironmentAttribute<?> attribute, Vec3 position,
+	@Inject(method = "getValue", at = @At("RETURN"), cancellable = true)
+	private void overhaul$bendMoonPhase(EnvironmentAttribute<?> attribute, Vec3 position,
 			SpatialAttributeInterpolator interpolator, CallbackInfoReturnable<Object> cir) {
-		pin(attribute, cir);
+		bend(attribute, cir);
 	}
 
-	@Inject(method = "getDimensionValue", at = @At("HEAD"), cancellable = true)
-	private void overhaul$pinDimensionMoonPhase(EnvironmentAttribute<?> attribute, CallbackInfoReturnable<Object> cir) {
-		pin(attribute, cir);
+	@Inject(method = "getDimensionValue", at = @At("RETURN"), cancellable = true)
+	private void overhaul$bendDimensionMoonPhase(EnvironmentAttribute<?> attribute,
+			CallbackInfoReturnable<Object> cir) {
+		bend(attribute, cir);
 	}
 
-	private static void pin(EnvironmentAttribute<?> attribute, CallbackInfoReturnable<Object> cir) {
+	private static void bend(EnvironmentAttribute<?> attribute, CallbackInfoReturnable<Object> cir) {
 		if (attribute != EnvironmentAttributes.MOON_PHASE) {
 			return;
 		}
 
-		MoonPhase forced = MoonLock.forced();
+		if (!(cir.getReturnValue() instanceof MoonPhase real)) {
+			return;
+		}
 
-		if (forced != null) {
-			cir.setReturnValue(forced);
+		MoonPhase effective = MoonLock.apply(real);
+
+		if (effective != real) {
+			cir.setReturnValue(effective);
 		}
 	}
 }

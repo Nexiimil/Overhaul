@@ -2,6 +2,7 @@ package com.overhaul.gametest;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 import com.overhaul.module.backpack.BackpackItem;
 
@@ -10,11 +11,16 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestServerConnection;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.attribute.EnvironmentAttributes;
+import net.minecraft.world.clock.WorldClock;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -25,6 +31,7 @@ import net.minecraft.world.item.crafting.CraftingInput;
 import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeType;
+import net.minecraft.world.level.MoonPhase;
 
 /**
  * Drives a real client through the parts of Overhaul that only exist once a world is running.
@@ -45,6 +52,7 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 			checkEloteCraftsWithBothFlavours(singleplayer);
 			checkBackpackOpens(context, singleplayer);
 			checkOverburdenedSlowsYouDown(context, singleplayer);
+			checkMoonBendsWithoutMovingTheClock(context, singleplayer);
 
 			context.takeScreenshot("overhaul-world");
 		}
@@ -178,6 +186,162 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 				throw new AssertionError("Slowness should expire once the backpacks are gone");
 			}
 		});
+	}
+
+	/**
+	 * The moon is the one thing in the mod where the mechanics and the picture are computed
+	 * separately — the server from its clock, the client from its own — so the only way to know
+	 * they agree is to ask both in a running game. Single player shares the override between the
+	 * two, so what the client half proves is that the mixin reaches the client's own attribute
+	 * system, not that the payload carries the value; a dedicated server would be needed for
+	 * that. This also pins down the property the whole
+	 * design exists for: bending the moon must not move the world clock, because world time feeds
+	 * local difficulty and moving it would quietly retune the hordes these commands are for.
+	 */
+	private static void checkMoonBendsWithoutMovingTheClock(ClientGameTestContext context,
+			TestSingleplayerContext singleplayer) {
+		AtomicReference<MoonPhase> expected = new AtomicReference<>();
+
+		singleplayer.getServer().runOnServer(server -> {
+			ServerLevel level = server.overworld();
+			BlockPos pos = onlyPlayer(server).blockPosition();
+
+			// Midday, so that the couple of ticks that pass later in this test cannot drift the
+			// day index and make the assertions depend on where the world happened to start.
+			run(server, "time set noon");
+
+			MoonPhase before = phaseAt(level, pos);
+			MoonPhase target = shift(before, 3);
+			long clockBefore = level.getOverworldClockTime();
+
+			run(server, "overhaul moon " + target.getSerializedName());
+
+			MoonPhase after = phaseAt(level, pos);
+
+			// Landing on target + 3 instead would mean the rotation was applied twice, which is
+			// what would happen if getValue and getDimensionValue ever started delegating to one
+			// another. A pin would survive that; a rotation does not.
+			if (after != target) {
+				throw new AssertionError("Asked for " + target.getSerializedName() + ", moon reads "
+						+ after.getSerializedName() + " (was " + before.getSerializedName() + ")");
+			}
+
+			if (level.getOverworldClockTime() != clockBefore) {
+				throw new AssertionError("Bending the moon moved the world clock from " + clockBefore
+						+ " to " + level.getOverworldClockTime() + ", which drags local difficulty with it");
+			}
+
+			expected.set(target);
+		});
+
+		// A day on, the cycle should have carried on from the phase we set rather than snapping
+		// back to the clock's own or staying stuck where it was put.
+		singleplayer.getServer().runOnServer(server -> {
+			ServerLevel level = server.overworld();
+			Holder<WorldClock> clock = level.dimensionType().defaultClock()
+					.orElseThrow(() -> new AssertionError("The overworld has no clock"));
+
+			server.clockManager().addTicks(clock, MoonPhase.PHASE_LENGTH);
+		});
+
+		context.waitTicks(2);
+
+		singleplayer.getServer().runOnServer(server -> {
+			MoonPhase wanted = shift(expected.get(), 1);
+			MoonPhase now = phaseAt(server.overworld(), onlyPlayer(server).blockPosition());
+
+			if (now != wanted) {
+				throw new AssertionError("A day after setting " + expected.get().getSerializedName()
+						+ " the moon should read " + wanted.getSerializedName() + ", not " + now.getSerializedName());
+			}
+
+			expected.set(wanted);
+		});
+
+		singleplayer.getConnection().waitForClientboundPackets();
+
+		context.runOnClient(client -> {
+			if (client.level == null || client.player == null) {
+				throw new AssertionError("No client level while checking the moon");
+			}
+
+			MoonPhase drawn = client.level.environmentAttributes()
+					.getValue(EnvironmentAttributes.MOON_PHASE, client.player.position());
+
+			if (drawn != expected.get()) {
+				throw new AssertionError("Server is running a " + expected.get().getSerializedName()
+						+ " but the client would draw a " + drawn.getSerializedName());
+			}
+		});
+
+		// The pin outranks the rotation, and is picked up by a poll rather than a change callback,
+		// so it takes up to a second rather than landing on the same tick. Pinned to the opposite
+		// side of the cycle from where the rotation currently has it, so that the assertion cannot
+		// pass by the two happening to agree.
+		AtomicReference<MoonPhase> pinned = new AtomicReference<>();
+
+		singleplayer.getServer().runOnServer(server -> {
+			MoonPhase pin = shift(expected.get(), MoonPhase.COUNT / 2);
+
+			pinned.set(pin);
+			run(server, "gamerule overhaul:fixed_moon_phase " + pin.getSerializedName());
+		});
+
+		context.waitTicks(25);
+
+		singleplayer.getServer().runOnServer(server -> {
+			MoonPhase now = phaseAt(server.overworld(), onlyPlayer(server).blockPosition());
+
+			if (now != pinned.get()) {
+				throw new AssertionError("The pin should outrank the rotation: pinned "
+						+ pinned.get().getSerializedName() + " over a rotated "
+						+ expected.get().getSerializedName() + ", moon reads " + now.getSerializedName());
+			}
+
+			run(server, "gamerule overhaul:fixed_moon_phase none");
+		});
+
+		context.waitTicks(25);
+
+		// And with the pin off the rotation is still there, then reset puts the cycle back on the
+		// clock. Without a reset the only way back would be to know the true phase already.
+		singleplayer.getServer().runOnServer(server -> {
+			ServerLevel level = server.overworld();
+			BlockPos pos = onlyPlayer(server).blockPosition();
+			MoonPhase rotated = phaseAt(level, pos);
+
+			if (rotated != expected.get()) {
+				throw new AssertionError("Clearing the pin should leave the rotation, moon reads "
+						+ rotated.getSerializedName());
+			}
+
+			run(server, "overhaul moon reset");
+
+			if (phaseAt(level, pos) == rotated) {
+				throw new AssertionError("Reset left the moon where the rotation had put it");
+			}
+		});
+	}
+
+	private static MoonPhase phaseAt(ServerLevel level, BlockPos pos) {
+		return level.environmentAttributes().getValue(EnvironmentAttributes.MOON_PHASE, pos);
+	}
+
+	/** The phase {@code steps} along the cycle from this one. */
+	private static MoonPhase shift(MoonPhase phase, int steps) {
+		int index = Math.floorMod(phase.index() + steps, MoonPhase.COUNT);
+
+		for (MoonPhase candidate : MoonPhase.values()) {
+			if (candidate.index() == index) {
+				return candidate;
+			}
+		}
+
+		throw new AssertionError("No moon phase at index " + index);
+	}
+
+	private static void run(net.minecraft.server.MinecraftServer server, String command) {
+		server.getCommands().performPrefixedCommand(server.createCommandSourceStack(), command);
 	}
 
 	/** Looks an item up by id, failing the test with a useful message if it was never registered. */

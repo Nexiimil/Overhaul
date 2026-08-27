@@ -41,18 +41,19 @@ public class OverhaulClient implements ClientModInitializer {
 	}
 
 	/**
-	 * Takes the server's pinned moon phase, if it has one.
+	 * Takes the server's pinned moon phase and cycle rotation, if it has either.
 	 *
 	 * <p>Registered whatever the module config says, because the moon is not any one module's: the
-	 * game rule lives on the server, and a client that ignored it would draw the real moon over
+	 * game rules live on the server, and a client that ignored them would draw the real moon over
 	 * mechanics running on a different one.
 	 *
-	 * <p>Cleared on disconnect so a phase pinned on one server does not follow the player into the
+	 * <p>Cleared on disconnect so a moon bent on one server does not follow the player into the
 	 * next world they open.
 	 */
 	private static void registerMoonLock() {
 		ClientPlayNetworking.registerGlobalReceiver(MoonLockPayload.TYPE,
-				(payload, context) -> context.client().execute(() -> MoonLock.applyFromServer(payload.phaseIndex())));
+				(payload, context) -> context.client()
+						.execute(() -> MoonLock.applyFromServer(payload.phaseIndex(), payload.offset())));
 
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> MoonLock.clear());
 	}

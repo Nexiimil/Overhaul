@@ -49,6 +49,8 @@
   "tooltip.overhaul.template.upgrade_material": "Copper, iron, gold, diamond or netherite ingot",
   "gamerule.overhaul.fixed_moon_phase": "Fixed moon phase",
   "gamerule.overhaul.fixed_moon_phase.description": "Holds the moon at one phase instead of letting it cycle. Affects the moon you see and everything it drives, including local difficulty.",
+  "gamerule.overhaul.moon_phase_offset": "Moon phase offset",
+  "gamerule.overhaul.moon_phase_offset.description": "Rotates the lunar cycle by this many phases without moving the world clock. The moon still waxes and wanes at the usual rate, just from a different starting phase. Set by /overhaul moon.",
   "boss.overhaul.horde": "Horde",
   "event.overhaul.horde.formed": "Something out there has your scent.",
   "container.overhaul.backpack": "Backpack",

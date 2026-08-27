@@ -10,13 +10,10 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Holder;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.DifficultyInstance;
-import net.minecraft.world.clock.ServerClockManager;
 import net.minecraft.world.attribute.EnvironmentAttributes;
-import net.minecraft.world.clock.WorldClock;
 import net.minecraft.world.level.MoonPhase;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
@@ -60,7 +57,9 @@ public final class OverhaulCommands {
 						.executes(context -> setInhabited(context.getSource(), 0L)));
 
 		LiteralArgumentBuilder<CommandSourceStack> moon = Commands.literal("moon")
-				.executes(context -> reportMoon(context.getSource()));
+				.executes(context -> reportMoon(context.getSource()))
+				.then(Commands.literal("reset")
+						.executes(context -> resetMoon(context.getSource())));
 
 		// A literal per phase rather than a string argument, so tab completion lists them.
 		for (MoonPhase phase : MoonPhase.values()) {
@@ -193,75 +192,100 @@ public final class OverhaulCommands {
 		ServerLevel level = source.getLevel();
 		BlockPos pos = BlockPos.containing(source.getPosition());
 		MoonPhase phase = moonPhaseOf(level, pos);
+		MoonPhase pinned = MoonLock.forced();
+		int offset = MoonLock.offset();
 
 		source.sendSuccess(() -> Component.literal("Moon").withStyle(ChatFormatting.GOLD), false);
 		source.sendSuccess(() -> line("Phase", phase.getSerializedName() + " (" + phase.index() + ")"), false);
 		source.sendSuccess(() -> line("Brightness", String.format("%.2f", level.getMoonBrightness(pos))), false);
 
+		// Only worth a line when it is doing something, but then it is worth it: without these the
+		// moon reads as an ordinary one and there is nothing to say why it is not the one the clock
+		// implies.
+		if (pinned != null) {
+			source.sendSuccess(() -> line("Held by", "overhaul:fixed_moon_phase at "
+					+ pinned.getSerializedName()), false);
+		}
+
+		if (offset != 0) {
+			// The true phase is recoverable by undoing the rotation, but only while nothing is
+			// pinned — a pin discards the real value rather than shifting it, and re-deriving it
+			// here would mean a second copy of vanilla's clock arithmetic.
+			String rotated = "+" + offset + (offset == 1 ? " phase" : " phases")
+					+ " (overhaul:moon_phase_offset)";
+			source.sendSuccess(() -> line("Rotated", pinned == null
+					? rotated + ", true phase " + shift(phase, -offset).getSerializedName()
+					: rotated + ", applies when the pin is off"), false);
+		}
+
 		return 1;
 	}
 
 	/**
-	 * Moves the world clock to the requested moon phase, keeping the time of day exactly where it
-	 * is.
+	 * Rotates the lunar cycle so that today reads as the requested phase.
 	 *
-	 * <p>The moon is not a stored value either: the phase is which day of the eight-day lunar cycle
-	 * the clock is on, so setting it means moving the clock by whole days. Only ever forwards —
-	 * winding a world backwards would take the world age term of local difficulty with it, and that
-	 * is the other half of what these commands exist to control.
+	 * <p>The moon is not a stored value: the phase is which day of the eight day cycle the clock is
+	 * on. So the obvious implementation is to move the clock by whole days, and it is the wrong one
+	 * — world time is an input to local difficulty on a sixty day ramp, so a jump of up to eight
+	 * days moves difficulty by up to a seventh of that ramp. The other half of this command exists
+	 * to set difficulty deliberately, and it would have been silently fighting this half.
+	 *
+	 * <p>Rotating the cycle instead changes tonight's moon and nothing else. The clock, the time of
+	 * day and the world age all stay exactly where they were, and the following nights go on
+	 * through the cycle from the new phase at the ordinary rate.
 	 */
 	private static int setMoon(CommandSourceStack source, MoonPhase phase) {
 		ServerLevel level = source.getLevel();
 		BlockPos pos = BlockPos.containing(source.getPosition());
 
-		// Moving the clock would work, but the pin would go on reporting the phase it is holding,
-		// so the command would look broken. Say what is actually in the way instead.
+		// The rotation would still be applied underneath, but the pin would go on reporting the
+		// phase it is holding, so the command would look broken. Say what is in the way instead.
 		MoonPhase pinned = MoonLock.forced();
 
 		if (pinned != null) {
-			source.sendFailure(Component.literal("The moon is pinned to " + pinned.getSerializedName()
+			source.sendFailure(Component.literal("The moon is held at " + pinned.getSerializedName()
 					+ " by the overhaul:fixed_moon_phase game rule. Set that rule to none first."));
 			return 0;
 		}
 
-		Holder<WorldClock> clock = level.dimensionType().defaultClock().orElse(null);
-
-		if (clock == null) {
-			source.sendFailure(Component.literal(
-					"This dimension has no clock of its own, so it has no moon to set."));
-			return 0;
-		}
-
-		ServerClockManager clocks = source.getServer().clockManager();
-		long now = clocks.getTotalTicks(clock);
-		long cycle = (long) MoonPhase.PHASE_LENGTH * MoonPhase.COUNT;
-		long dayStart = now - Math.floorMod(now, (long) MoonPhase.PHASE_LENGTH);
-		long target = dayStart - Math.floorMod(dayStart, cycle) + phase.startTick()
-				+ Math.floorMod(now, (long) MoonPhase.PHASE_LENGTH);
-
-		while (target < now) {
-			target += cycle;
-		}
-
-		clocks.setTotalTicks(clock, target);
+		MoonPhase before = moonPhaseOf(level, pos);
+		MoonLock.setOffset(source.getServer(), MoonLock.offset() + phase.index() - before.index());
 
 		// Read the phase back rather than trusting the arithmetic: the value comes from the
 		// dimension's environment attributes, which a data pack is free to redefine.
 		MoonPhase landed = moonPhaseOf(level, pos);
 
 		if (landed != phase) {
-			source.sendFailure(Component.literal("Moved the clock, but this dimension reports the moon as "
+			source.sendFailure(Component.literal("Rotated the cycle, but this dimension reports the moon as "
 					+ landed.getSerializedName() + " rather than " + phase.getSerializedName()
 					+ ". Its environment attributes are not the vanilla ones."));
 			return 0;
 		}
 
-		long advanced = target - now;
-
-		source.sendSuccess(() -> Component.literal(String.format(
-				"Moon set to %s, %d days on. Time of day unchanged.",
-				phase.getSerializedName(), advanced / MoonPhase.PHASE_LENGTH))
+		source.sendSuccess(() -> Component.literal("Moon is now " + phase.getSerializedName()
+				+ ", and the cycle carries on from there. Clock and local difficulty untouched.")
 				.withStyle(ChatFormatting.GREEN), true);
+
+		return 1;
+	}
+
+	/** Puts the cycle back where the clock says it should be. */
+	private static int resetMoon(CommandSourceStack source) {
+		ServerLevel level = source.getLevel();
+		BlockPos pos = BlockPos.containing(source.getPosition());
+
+		MoonLock.setOffset(source.getServer(), 0);
+
+		MoonPhase phase = moonPhaseOf(level, pos);
+		MoonPhase pinned = MoonLock.forced();
+
+		source.sendSuccess(() -> Component.literal("Moon cycle back on the clock, now "
+				+ phase.getSerializedName() + ".").withStyle(ChatFormatting.GREEN), true);
+
+		if (pinned != null) {
+			source.sendSuccess(() -> Component.literal("The overhaul:fixed_moon_phase game rule is still "
+					+ "holding it at " + pinned.getSerializedName() + ".").withStyle(ChatFormatting.YELLOW), false);
+		}
 
 		return 1;
 	}
@@ -282,11 +306,25 @@ public final class OverhaulCommands {
 	 * the eight phases share a brightness with another and a waxing crescent is indistinguishable
 	 * from a waning one that way.
 	 *
-	 * <p>This also passes through the {@code fixed_moon_phase} override, so what is reported is
-	 * what the rest of the game is acting on.
+	 * <p>This also passes through the {@code fixed_moon_phase} and {@code moon_phase_offset}
+	 * overrides, so what is reported is what the rest of the game is acting on — which is why
+	 * {@code setMoon} can solve for a rotation by reading it before and after.
 	 */
 	private static MoonPhase moonPhaseOf(ServerLevel level, BlockPos pos) {
 		return level.environmentAttributes().getValue(EnvironmentAttributes.MOON_PHASE, pos);
+	}
+
+	/** The phase {@code steps} along the cycle from this one, wrapping in either direction. */
+	private static MoonPhase shift(MoonPhase phase, int steps) {
+		int index = Math.floorMod(phase.index() + steps, MoonPhase.COUNT);
+
+		for (MoonPhase candidate : MoonPhase.values()) {
+			if (candidate.index() == index) {
+				return candidate;
+			}
+		}
+
+		return phase;
 	}
 
 	/** The chunk at this position, or null if it is not already loaded — never forces one in. */

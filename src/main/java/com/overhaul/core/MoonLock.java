@@ -15,25 +15,31 @@ import net.minecraft.world.level.gamerules.GameRuleCategory;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The {@code overhaul:fixed_moon_phase} game rule: holds the moon at one phase.
+ * The two ways Overhaul interferes with the moon, and the one seam both go through.
  *
- * <p>The obvious way to pin the moon is to wind the world clock back a day whenever it drifts off
- * the wanted phase, and it is the wrong way. The phase is which day of the lunar cycle the clock is
- * on, so holding it that way means permanently rewinding world time — and world age is an input to
- * local difficulty, so a moon lock built that way would quietly suppress the very hordes it exists
- * to help test. Overriding the value where it is read costs one mixin and leaves the clock alone.
+ * <p>{@code overhaul:fixed_moon_phase} holds the moon at one phase. {@code
+ * overhaul:moon_phase_offset} rotates the cycle by a whole number of phases, leaving it running.
+ * The pin wins where both are set, because a frozen moon has no cycle left to rotate.
+ *
+ * <p>Neither touches the world clock, and that is the whole point. The phase is which day of the
+ * eight day lunar cycle the clock is on, so the obvious implementation of either — wind the clock
+ * until the moon reads right — moves world time. World time is an input to local difficulty, on a
+ * sixty day ramp, so an eight day nudge to fix the moon quietly moves difficulty by up to a
+ * seventh of that ramp. That would suppress or inflate the very hordes these exist to test, and it
+ * would do it invisibly. Overriding the value where it is read costs one mixin and leaves both the
+ * clock and the difficulty alone.
  *
  * <p>The override goes in at {@code EnvironmentAttributeSystem}, which is the single point every
- * reader passes through: the server's own {@code getMoonBrightness}, the client's interpolating
- * probe that feeds the sky renderer, and the clock item. One seam covers mechanics and visuals
- * together, which is what stops the two disagreeing.
+ * reader passes through: the server's own {@code getMoonBrightness}, the client probe that feeds
+ * the sky renderer, the clock item, and the moon brightness check that gates mob variant spawns.
+ * One seam covers mechanics and visuals together, which is what stops the two disagreeing.
  *
- * <p>The rule itself lives only on the server, so the value is pushed to each client on join and
- * whenever it changes. Without that a multiplayer client would keep drawing the real moon.
+ * <p>Both rules live only on the server, so the pair is pushed to each client on join and whenever
+ * it changes. Without that a multiplayer client would keep drawing the real moon.
  */
 public final class MoonLock {
 	/**
-	 * The rule's values: the eight phases, plus {@code none} for the ordinary cycle.
+	 * The pin's values: the eight phases, plus {@code none} for the ordinary cycle.
 	 *
 	 * <p>A separate enum rather than {@link MoonPhase} itself because the rule needs an off switch,
 	 * and a second boolean rule to say whether the first one counts would be worse.
@@ -44,7 +50,6 @@ public final class MoonLock {
 	 * custom argument type, but an unregistered one breaks command tree sync to clients, which is
 	 * a much worse trade than an unconventional constant name.
 	 */
-	@SuppressWarnings("checkstyle:constantname")
 	public enum Value {
 		none(null),
 		full_moon(MoonPhase.FULL_MOON),
@@ -67,38 +72,86 @@ public final class MoonLock {
 		}
 	}
 
-	private static @Nullable GameRule<Value> rule;
+	/**
+	 * Phases by {@link MoonPhase#index()}.
+	 *
+	 * <p>{@code values()} happens to be in index order today, but the rotation is arithmetic on
+	 * index and nothing promises the two stay aligned, so this looks them up rather than assuming.
+	 */
+	private static final MoonPhase[] BY_INDEX = byIndex();
+
+	private static @Nullable GameRule<Value> pinRule;
+	private static @Nullable GameRule<Integer> offsetRule;
 
 	/**
-	 * The phase currently being forced, or null for the ordinary cycle.
+	 * The phase being held, or null for none, and the rotation applied to the running cycle.
 	 *
-	 * <p>Read from a mixin on the hot path, so it is a plain field rather than a lookup. On a
-	 * server it is refreshed from the game rule; on a client connected to one it is set by the
-	 * payload. In single player both paths write the same value, which is harmless.
+	 * <p>Read from a mixin on the hot path, so these are plain fields rather than a lookup. On a
+	 * server they are refreshed from the game rules; on a client connected to one they are set by
+	 * the payload. In single player both paths write the same values, which is harmless.
 	 */
 	private static volatile @Nullable MoonPhase forced;
+	private static volatile int offset;
 
 	private MoonLock() {
 	}
 
-	/** @return the phase to report instead of the real one, or null to leave it alone */
+	private static MoonPhase[] byIndex() {
+		MoonPhase[] phases = new MoonPhase[MoonPhase.COUNT];
+
+		for (MoonPhase phase : MoonPhase.values()) {
+			phases[phase.index()] = phase;
+		}
+
+		return phases;
+	}
+
+	/** The phase being held by {@code fixed_moon_phase}, or null if it is off. */
 	public static @Nullable MoonPhase forced() {
 		return forced;
 	}
 
+	/** How many phases {@code moon_phase_offset} rotates the cycle by, 0 for none. */
+	public static int offset() {
+		return offset;
+	}
+
+	/**
+	 * The phase to report in place of the real one.
+	 *
+	 * <p>Returns {@code real} unchanged when neither rule is doing anything, which is the common
+	 * case and lets the mixin skip writing a return value at all.
+	 */
+	public static MoonPhase apply(MoonPhase real) {
+		MoonPhase pinned = forced;
+
+		if (pinned != null) {
+			return pinned;
+		}
+
+		int shift = offset;
+
+		return shift == 0 ? real : BY_INDEX[Math.floorMod(real.index() + shift, MoonPhase.COUNT)];
+	}
+
 	public static void register() {
-		rule = GameRuleBuilder.forEnum(Value.none)
+		pinRule = GameRuleBuilder.forEnum(Value.none)
 				.category(GameRuleCategory.MISC)
 				.buildAndRegister(Overhaul.id("fixed_moon_phase"));
+
+		offsetRule = GameRuleBuilder.forInteger(0)
+				.range(0, MoonPhase.COUNT - 1)
+				.category(GameRuleCategory.MISC)
+				.buildAndRegister(Overhaul.id("moon_phase_offset"));
 
 		PayloadTypeRegistry.clientboundPlay().register(MoonLockPayload.TYPE, MoonLockPayload.STREAM_CODEC);
 
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
 			refresh(server);
-			ServerPlayNetworking.send(handler.getPlayer(), payload());
+			send(handler.getPlayer());
 		});
 
-		// Polled rather than hooked on the rule's own change callback, because a rule can also be
+		// Polled rather than hooked on the rules' own change callbacks, because a rule can also be
 		// changed by a data pack load or another mod writing it directly.
 		ServerTickEvents.END_SERVER_TICK.register(MoonLock::tick);
 	}
@@ -111,59 +164,76 @@ public final class MoonLock {
 		}
 
 		sinceCheck = 0;
-		MoonPhase before = forced;
-		refresh(server);
-
-		if (before == forced) {
-			return;
-		}
-
-		MoonLockPayload update = payload();
-
-		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-			ServerPlayNetworking.send(player, update);
-		}
-
-		Overhaul.LOGGER.info("Fixed moon phase is now {}", forced == null ? "off" : forced.getSerializedName());
-	}
-
-	private static void refresh(MinecraftServer server) {
-		GameRule<Value> current = rule;
-
-		if (current == null) {
-			return;
-		}
-
-		forced = server.overworld().getGameRules().get(current).phase();
-	}
-
-	private static MoonLockPayload payload() {
-		MoonPhase phase = forced;
-		return new MoonLockPayload(phase == null ? -1 : phase.index());
-	}
-
-	/** Applies a value pushed from the server. Called on the client only. */
-	public static void applyFromServer(int phaseIndex) {
-		if (phaseIndex < 0 || phaseIndex >= MoonPhase.COUNT) {
-			forced = null;
-			return;
-		}
-
-		for (MoonPhase phase : MoonPhase.values()) {
-			if (phase.index() == phaseIndex) {
-				forced = phase;
-				return;
-			}
-		}
-
-		forced = null;
+		pushIfChanged(server);
 	}
 
 	/**
-	 * Clears the override when a client leaves a server, so a pinned moon on one server does not
+	 * Re-reads both rules and pushes the pair to every client if either moved.
+	 *
+	 * <p>Called from the poll, and directly by {@code /overhaul moon} so that a command's effect
+	 * is on screen before the next poll rather than up to a second later.
+	 */
+	public static void pushIfChanged(MinecraftServer server) {
+		MoonPhase wasForced = forced;
+		int wasOffset = offset;
+
+		refresh(server);
+
+		if (wasForced == forced && wasOffset == offset) {
+			return;
+		}
+
+		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+			send(player);
+		}
+
+		Overhaul.LOGGER.info("Moon is now {}, offset {}",
+				forced == null ? "on its ordinary cycle" : "held at " + forced.getSerializedName(), offset);
+	}
+
+	/** Sets the rotation, then republishes so the read back and every client agree at once. */
+	public static void setOffset(MinecraftServer server, int phases) {
+		GameRule<Integer> rule = offsetRule;
+
+		if (rule == null) {
+			return;
+		}
+
+		server.overworld().getGameRules().set(rule, Math.floorMod(phases, MoonPhase.COUNT), server);
+		pushIfChanged(server);
+	}
+
+	private static void refresh(MinecraftServer server) {
+		if (pinRule != null) {
+			forced = server.overworld().getGameRules().get(pinRule).phase();
+		}
+
+		if (offsetRule != null) {
+			offset = Math.floorMod(server.overworld().getGameRules().get(offsetRule), MoonPhase.COUNT);
+		}
+	}
+
+	private static void send(ServerPlayer player) {
+		if (!ServerPlayNetworking.canSend(player, MoonLockPayload.TYPE)) {
+			return;
+		}
+
+		MoonPhase phase = forced;
+		ServerPlayNetworking.send(player, new MoonLockPayload(phase == null ? -1 : phase.index(), offset));
+	}
+
+	/** Applies a pair pushed from the server. Called on the client only. */
+	public static void applyFromServer(int phaseIndex, int phases) {
+		forced = phaseIndex < 0 || phaseIndex >= MoonPhase.COUNT ? null : BY_INDEX[phaseIndex];
+		offset = Math.floorMod(phases, MoonPhase.COUNT);
+	}
+
+	/**
+	 * Clears both overrides when a client leaves a server, so a moon bent on one server does not
 	 * follow the player into the next world they open.
 	 */
 	public static void clear() {
 		forced = null;
+		offset = 0;
 	}
 }
