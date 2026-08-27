@@ -10,6 +10,7 @@ import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestServerConnection;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
+import net.fabricmc.fabric.api.client.gametest.v1.world.TestWorldSave;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
@@ -44,6 +45,10 @@ import net.minecraft.world.level.MoonPhase;
 public class OverhaulClientGameTest implements FabricClientGameTest {
 	@Override
 	public void runTest(ClientGameTestContext context) {
+		TestWorldSave save;
+		AtomicReference<MoonPhase> rotated = new AtomicReference<>();
+		AtomicReference<MoonPhase> held = new AtomicReference<>();
+
 		try (TestSingleplayerContext singleplayer = context.worldBuilder().create()) {
 			TestServerConnection connection = singleplayer.getConnection();
 			connection.waitForChunksRender();
@@ -53,8 +58,17 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 			checkBackpackOpens(context, singleplayer);
 			checkOverburdenedSlowsYouDown(context, singleplayer);
 			checkMoonBendsWithoutMovingTheClock(context, singleplayer);
+			bendTheMoonAndLeaveIt(context, singleplayer, rotated, held);
 
 			context.takeScreenshot("overhaul-world");
+			save = singleplayer.getWorldSave();
+		}
+
+		// Reopening the save starts a new server against the same level.dat, which is a restart in
+		// every way that matters to state meant to outlive one.
+		try (TestSingleplayerContext reopened = save.open()) {
+			reopened.getConnection().waitForChunksRender();
+			checkMoonSurvivedTheRestart(context, reopened, rotated, held);
 		}
 	}
 
@@ -319,6 +333,66 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 
 			if (phaseAt(level, pos) == rotated) {
 				throw new AssertionError("Reset left the moon where the rotation had put it");
+			}
+		});
+	}
+
+	/**
+	 * Leaves both moon rules set to something that is not their default, so that reopening the save
+	 * can tell whether they came back.
+	 */
+	private static void bendTheMoonAndLeaveIt(ClientGameTestContext context,
+			TestSingleplayerContext singleplayer, AtomicReference<MoonPhase> rotated,
+			AtomicReference<MoonPhase> held) {
+		singleplayer.getServer().runOnServer(server -> {
+			ServerLevel level = server.overworld();
+			BlockPos pos = onlyPlayer(server).blockPosition();
+			MoonPhase target = shift(phaseAt(level, pos), 2);
+
+			run(server, "overhaul moon " + target.getSerializedName());
+			rotated.set(target);
+
+			// Somewhere else entirely, so that neither rule can be confirmed by the other's value.
+			MoonPhase pin = shift(target, MoonPhase.COUNT / 2);
+
+			held.set(pin);
+			run(server, "gamerule overhaul:fixed_moon_phase " + pin.getSerializedName());
+		});
+
+		context.waitTicks(25);
+	}
+
+	/**
+	 * Both rules are game rules, so they ride in level.dat and should come back on their own. That
+	 * is worth asserting rather than assuming: a mod's rule only round trips while the mod is the
+	 * one reading the save, and nothing in the game would complain if a value quietly reverted to
+	 * its default — the moon would simply be wrong, which is the failure this whole feature exists
+	 * to avoid.
+	 */
+	private static void checkMoonSurvivedTheRestart(ClientGameTestContext context,
+			TestSingleplayerContext reopened, AtomicReference<MoonPhase> rotated,
+			AtomicReference<MoonPhase> held) {
+		reopened.getServer().runOnServer(server -> {
+			MoonPhase now = phaseAt(server.overworld(), onlyPlayer(server).blockPosition());
+
+			if (now != held.get()) {
+				throw new AssertionError("The pin should have survived the restart: expected "
+						+ held.get().getSerializedName() + ", moon reads " + now.getSerializedName());
+			}
+
+			run(server, "gamerule overhaul:fixed_moon_phase none");
+		});
+
+		context.waitTicks(25);
+
+		// With the pin out of the way the rotation underneath should still be there, which also
+		// means the clock came back where it was — a rotation is only meaningful against it.
+		reopened.getServer().runOnServer(server -> {
+			MoonPhase now = phaseAt(server.overworld(), onlyPlayer(server).blockPosition());
+
+			if (now != rotated.get()) {
+				throw new AssertionError("The rotation should have survived the restart: expected "
+						+ rotated.get().getSerializedName() + ", moon reads " + now.getSerializedName());
 			}
 		});
 	}
