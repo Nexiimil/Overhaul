@@ -14,9 +14,10 @@ import org.spongepowered.asm.mixin.injection.Redirect;
  * Widens what an enderman is willing to pick up.
  *
  * <p>Vanilla gates this on a single block tag, which is why endermen only ever move dirt and
- * flowers around. Replacing that one check with a rule — anything solid, plus the stairs, slabs
- * and glass that are not solid blocks, minus anything with a block entity or an unbreakable
- * hardness — lets them rearrange real builds while still leaving chests and spawners alone.
+ * flowers around. Replacing that one check with a rule — anything solid, plus the stairs, slabs,
+ * glass, walls and fences that are not solid blocks, minus anything with a block entity or an
+ * unbreakable hardness — lets them rearrange real builds while still leaving chests and spawners
+ * alone.
  */
 @Mixin(targets = "net.minecraft.world.entity.monster.EnderMan$EndermanTakeBlockGoal")
 public abstract class EndermanTakeBlockGoalMixin {

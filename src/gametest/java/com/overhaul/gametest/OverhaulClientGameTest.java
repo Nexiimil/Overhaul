@@ -210,9 +210,9 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 	 * they agree is to ask both in a running game. Single player shares the override between the
 	 * two, so what the client half proves is that the mixin reaches the client's own attribute
 	 * system, not that the payload carries the value; a dedicated server would be needed for
-	 * that. This also pins down the property the whole
-	 * design exists for: bending the moon must not move the world clock, because world time feeds
-	 * local difficulty and moving it would quietly retune the hordes these commands are for.
+	 * that. This also pins down the property the whole design exists for: bending the moon must not
+	 * move the world clock, because world time feeds local difficulty and moving it would quietly
+	 * retune the hordes these commands are for.
 	 */
 	private static void checkMoonBendsWithoutMovingTheClock(ClientGameTestContext context,
 			TestSingleplayerContext singleplayer) {

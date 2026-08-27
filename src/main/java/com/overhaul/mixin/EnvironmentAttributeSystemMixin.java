@@ -25,9 +25,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * Overriding here therefore keeps the moon that is drawn and the moon that drives local difficulty
  * in agreement — putting the override any further down would let the two disagree.
  *
- * <p>The alternative was to bend the moon by winding the world clock, which would have moved world
- * time. World time feeds local difficulty on a sixty day ramp, so shifting the moon by up to eight
- * days would have dragged difficulty with it.
+ * <p>{@link MoonLock} has the argument for overriding the phase where it is read rather than
+ * winding the world clock to it.
  *
  * <p>Injected at {@code RETURN} rather than {@code HEAD} because the rotation is relative: it
  * needs the phase vanilla was about to report. {@code getValue} and {@code getDimensionValue} read

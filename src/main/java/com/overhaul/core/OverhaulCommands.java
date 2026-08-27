@@ -241,15 +241,14 @@ public final class OverhaulCommands {
 	/**
 	 * Rotates the lunar cycle so that today reads as the requested phase.
 	 *
-	 * <p>The moon is not a stored value: the phase is which day of the eight day cycle the clock is
-	 * on. So the obvious implementation is to move the clock by whole days, and it is the wrong one
-	 * — world time is an input to local difficulty on a sixty day ramp, so a jump of up to eight
-	 * days moves difficulty by up to a seventh of that ramp. The other half of this command exists
-	 * to set difficulty deliberately, and it would have been silently fighting this half.
+	 * <p>Rotating rather than winding the clock, because the phase is which day of the eight day
+	 * cycle the clock is on: reaching a phase by moving the clock moves world time with it, and
+	 * world time feeds the local difficulty that the other half of this command exists to set
+	 * deliberately. {@link MoonLock} has the full argument.
 	 *
-	 * <p>Rotating the cycle instead changes tonight's moon and nothing else. The clock, the time of
-	 * day and the world age all stay exactly where they were, and the following nights go on
-	 * through the cycle from the new phase at the ordinary rate.
+	 * <p>The rotation changes tonight's moon and nothing else. The clock, the time of day and the
+	 * world age all stay exactly where they were, and the following nights go on through the cycle
+	 * from the new phase at the ordinary rate.
 	 */
 	private static int setMoon(CommandSourceStack source, MoonPhase phase) {
 		ServerLevel level = source.getLevel();

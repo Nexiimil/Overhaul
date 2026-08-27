@@ -64,14 +64,15 @@ public class MobConfig {
 		 * Local difficulty a chunk must reach before it can produce a horde.
 		 *
 		 * <p>Vanilla's local difficulty is
-		 * {@code difficultyId x (0.75 + worldAge + chunkInhabitedTime + moon)}, so it has a
-		 * different ceiling on each setting: <b>1.5</b> on Easy, <b>4.0</b> on Normal and
-		 * <b>6.75</b> on Hard, against floors of 1.5, 1.5 and 2.25 in a brand new chunk.
+		 * {@code difficultyId x (0.75 + worldAge + chunkInhabitedTime + moon)}, with everything
+		 * after the 0.75 halved on Easy. That gives it a different ceiling on each setting:
+		 * <b>1.5</b> on Easy, <b>4.0</b> on Normal and <b>6.75</b> on Hard, against floors of
+		 * 0.75, 1.5 and 2.25 in a brand new chunk.
 		 *
 		 * <p>The default sits above Easy's ceiling on purpose — hordes are something the harder
 		 * settings opt into. On Normal it wants a world some way in and a chunk that has been lived
 		 * in; on Hard it comes into reach early. Raise it towards 4 to make them rare, or drop it
-		 * below 1.5 to have them everywhere on any setting.
+		 * below 0.75 to have them everywhere on any setting.
 		 */
 		public float minLocalDifficulty = 2.5F;
 
@@ -180,7 +181,7 @@ public class MobConfig {
 		/** Lets an enderman pick up anything that renders as a full solid block. */
 		public boolean carryAnySolidBlock = true;
 
-		/** Lets an enderman pick up stairs, slabs, glass and panes, which are not solid blocks. */
+		/** Lets an enderman pick up stairs, slabs, glass, walls and fences, which are not solid. */
 		public boolean carryPartialBlocks = true;
 
 		/** Never picked up, whatever the rules above say. */

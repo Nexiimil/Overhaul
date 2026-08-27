@@ -23,7 +23,10 @@ public class BackpackConfig {
 	/** Letting a backpack hold another backpack makes it easy to lose track of items. */
 	public boolean allowNesting = false;
 
-	/** Opening a backpack while sneaking places it as a block instead. Reserved for future use. */
+	/**
+	 * Whether the backpack key opens the first backpack the player is carrying. With this off the
+	 * server ignores the request; a backpack can still be opened by holding it and using it.
+	 */
 	public boolean openWithKeybind = true;
 
 	public Map<String, TierEntry> tiers = new LinkedHashMap<>();
