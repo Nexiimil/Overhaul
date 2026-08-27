@@ -32,8 +32,17 @@ import org.jspecify.annotations.Nullable;
  * module switched off.
  */
 public final class OverhaulCommands {
-	/** Inhabited time at which the chunk's contribution saturates; more buys nothing. */
-	private static final long INHABITED_CAP = 3_600_000L;
+	/**
+	 * An inhabited time far past any plausible saturation point, used only as the top of the search
+	 * in {@link #saturationPoint}.
+	 *
+	 * <p>Deliberately not vanilla's actual clamp. Hardcoding that would be the one copied number in
+	 * a command built to avoid copying vanilla's difficulty maths, and it would fail in one
+	 * direction only: raise the clamp and this would start refusing targets that are genuinely
+	 * reachable, while reporting a ceiling and a percentage that were quietly wrong. A bound that
+	 * is merely enormous cannot go stale that way — about thirty-five thousand years of it.
+	 */
+	private static final long INHABITED_PROBE = 1L << 40;
 
 	private OverhaulCommands() {
 	}
@@ -88,15 +97,22 @@ public final class OverhaulCommands {
 		int chunkX = pos.getX() >> 4;
 		int chunkZ = pos.getZ() >> 4;
 		long time = chunk.getInhabitedTime();
+		long cap = saturationPoint(level, pos);
 
 		source.sendSuccess(() -> Component.literal("Chunk " + chunkX + ", " + chunkZ)
 				.withStyle(ChatFormatting.GOLD), false);
 		source.sendSuccess(() -> line("Local difficulty",
 				String.format("%.2f", difficultyWith(level, pos, time))), false);
 		source.sendSuccess(() -> line("Range here", String.format("%.2f to %.2f",
-				difficultyWith(level, pos, 0L), difficultyWith(level, pos, INHABITED_CAP))), false);
-		source.sendSuccess(() -> line("Inhabited time", time + " ticks ("
-				+ String.format("%.1f", 100.0F * Math.min(1.0F, (float) time / INHABITED_CAP)) + "% of cap)"), false);
+				difficultyWith(level, pos, 0L), difficultyWith(level, pos, cap))), false);
+
+		// Peaceful pins difficulty at zero however long a chunk has been lived in, so there is no
+		// cap to be a percentage of and the honest thing is to say so rather than divide by it.
+		source.sendSuccess(() -> line("Inhabited time", cap <= 0L
+				? time + " ticks (inhabited time buys nothing on "
+						+ level.getDifficulty().getSerializedName() + ")"
+				: time + " ticks (" + String.format("%.1f", 100.0F * Math.min(1.0F, (float) time / cap))
+						+ "% of cap)"), false);
 		source.sendSuccess(() -> line("World difficulty", level.getDifficulty().getSerializedName()), false);
 		source.sendSuccess(() -> line("Moon", moonPhaseOf(level, pos).getSerializedName()), false);
 
@@ -121,8 +137,9 @@ public final class OverhaulCommands {
 			return 0;
 		}
 
+		long cap = saturationPoint(level, pos);
 		float floor = difficultyWith(level, pos, 0L);
-		float ceiling = difficultyWith(level, pos, INHABITED_CAP);
+		float ceiling = difficultyWith(level, pos, cap);
 
 		if (target < floor) {
 			source.sendFailure(Component.literal(String.format(
@@ -139,7 +156,7 @@ public final class OverhaulCommands {
 		}
 
 		long low = 0L;
-		long high = INHABITED_CAP;
+		long high = cap;
 
 		while (low < high) {
 			long mid = low + (high - low) / 2L;
@@ -291,6 +308,35 @@ public final class OverhaulCommands {
 	}
 
 	// Helpers ------------------------------------------------------------------------------------
+
+	/**
+	 * The smallest inhabited time that buys everything it can here — past this, more is wasted.
+	 *
+	 * <p>Asked of vanilla rather than copied from it, in the same spirit as the search in
+	 * {@link #setDifficulty}: evaluate the difficulty at an absurd inhabited time to learn what the
+	 * maximum is, then binary search for the first time that reaches it. Effective difficulty rises
+	 * monotonically with inhabited time and then flattens, so that lands exactly on the knee.
+	 *
+	 * <p>Returns zero on Peaceful, where difficulty is pinned at zero and the maximum is reached
+	 * before the chunk has been lived in at all.
+	 */
+	private static long saturationPoint(ServerLevel level, BlockPos pos) {
+		float most = difficultyWith(level, pos, INHABITED_PROBE);
+		long low = 0L;
+		long high = INHABITED_PROBE;
+
+		while (low < high) {
+			long mid = low + (high - low) / 2L;
+
+			if (difficultyWith(level, pos, mid) < most) {
+				low = mid + 1L;
+			} else {
+				high = mid;
+			}
+		}
+
+		return low;
+	}
 
 	/** What local difficulty would be here if the chunk had been inhabited for this long. */
 	private static float difficultyWith(ServerLevel level, BlockPos pos, long inhabitedTime) {

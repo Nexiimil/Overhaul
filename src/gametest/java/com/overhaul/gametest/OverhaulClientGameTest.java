@@ -33,6 +33,7 @@ import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.MoonPhase;
+import net.minecraft.world.level.chunk.ChunkAccess;
 
 /**
  * Drives a real client through the parts of Overhaul that only exist once a world is running.
@@ -58,6 +59,7 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 			checkBackpackOpens(context, singleplayer);
 			checkOverburdenedSlowsYouDown(context, singleplayer);
 			checkMoonBendsWithoutMovingTheClock(context, singleplayer);
+			checkDifficultyCeilingIsDerivedNotAssumed(singleplayer);
 			bendTheMoonAndLeaveIt(context, singleplayer, rotated, held);
 
 			context.takeScreenshot("overhaul-world");
@@ -394,6 +396,62 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 				throw new AssertionError("The rotation should have survived the restart: expected "
 						+ rotated.get().getSerializedName() + ", moon reads " + now.getSerializedName());
 			}
+		});
+	}
+
+	/**
+	 * The command works out where inhabited time stops buying difficulty by asking vanilla, rather
+	 * than holding a copy of vanilla's clamp. This checks it lands on the real knee.
+	 *
+	 * <p>The 3,600,000 below is deliberately hardcoded <em>here</em> and nowhere in the mod. It is
+	 * what vanilla clamps to today, and asserting it in a test is the right place for that: if
+	 * Mojang retunes it this fails loudly and the number gets updated, while the command carries on
+	 * working either way. A copy of it in the command would instead go quietly wrong — refusing
+	 * targets that had become reachable, and reporting a ceiling that was no longer true.
+	 */
+	private static void checkDifficultyCeilingIsDerivedNotAssumed(TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			ServerLevel level = server.overworld();
+			BlockPos pos = onlyPlayer(server).blockPosition();
+			ChunkAccess chunk = level.getChunk(pos);
+
+			// Hard, so that inhabited time has the widest range to work across.
+			run(server, "difficulty hard");
+
+			// Far past any clamp, so this is the most the chunk can ever be worth.
+			run(server, "overhaul difficulty inhabited 999999999");
+			float most = level.getCurrentDifficultyAt(pos).getEffectiveDifficulty();
+
+			run(server, "overhaul difficulty reset");
+
+			if (chunk.getInhabitedTime() != 0L) {
+				throw new AssertionError("reset should zero inhabited time, left " + chunk.getInhabitedTime());
+			}
+
+			// Asking for exactly the most it can be worth should be accepted, not refused as
+			// over the ceiling, and should solve to the smallest time that gets there.
+			run(server, "overhaul difficulty set " + Float.toString(most));
+
+			long landed = chunk.getInhabitedTime();
+
+			if (landed != 3_600_000L) {
+				throw new AssertionError("The ceiling should solve to vanilla's clamp of 3600000 ticks, got "
+						+ landed + " (if vanilla retuned the clamp, update this number)");
+			}
+
+			if (level.getCurrentDifficultyAt(pos).getEffectiveDifficulty() != most) {
+				throw new AssertionError("Solving for the ceiling should reach it exactly");
+			}
+
+			// And one tick short of the knee must genuinely be worth less, or the search above
+			// would have been landing on an arbitrary point in a flat region.
+			chunk.setInhabitedTime(landed - 1L);
+
+			if (level.getCurrentDifficultyAt(pos).getEffectiveDifficulty() >= most) {
+				throw new AssertionError("One tick below the knee should be worth strictly less");
+			}
+
+			run(server, "overhaul difficulty reset");
 		});
 	}
 
