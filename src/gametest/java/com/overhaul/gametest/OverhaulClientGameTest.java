@@ -82,6 +82,7 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 			checkMoonBendsWithoutMovingTheClock(context, singleplayer);
 			checkDifficultyCeilingIsDerivedNotAssumed(singleplayer);
 			bendTheMoonAndLeaveIt(context, singleplayer, rotated, held);
+			binSomethingAndLeaveIt(context, singleplayer);
 
 			context.takeScreenshot("overhaul-world");
 			save = singleplayer.getWorldSave();
@@ -92,6 +93,7 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 		try (TestSingleplayerContext reopened = save.open()) {
 			reopened.getConnection().waitForChunksRender();
 			checkMoonSurvivedTheRestart(context, reopened, rotated, held);
+			checkBinSurvivedTheRestart(reopened);
 		}
 	}
 
@@ -813,6 +815,27 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 			player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
 			player.getInventory().clearContent();
 		});
+	}
+
+	/** Leaves something in the bin for the reopened save to find. */
+	private static void binSomethingAndLeaveIt(ClientGameTestContext context,
+			TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server ->
+				onlyPlayer(server).containerMenu.setCarried(new ItemStack(item("minecraft:golden_apple"), 3)));
+
+		context.runOnClient(client -> ClientPlayNetworking.send(TrashPayload.INSTANCE));
+		singleplayer.getConnection().waitForServerboundPackets();
+		context.waitTicks(2);
+	}
+
+	/**
+	 * The bin is meant to be the thing that saves you from a misclick, and a crash is exactly when
+	 * you find out you wanted something back — so its contents have to outlive the session that
+	 * binned them, or the recovery is worth nothing when it matters most.
+	 */
+	private static void checkBinSurvivedTheRestart(TestSingleplayerContext reopened) {
+		reopened.getServer().runOnServer(server -> expect(TrashSlot.contents(onlyPlayer(server)),
+				"minecraft:golden_apple", 3, "the bin after the world was reopened"));
 	}
 
 	private static void placeChest(ServerLevel level, BlockPos pos, ItemStack... contents) {

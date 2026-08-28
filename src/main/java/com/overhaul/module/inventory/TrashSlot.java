@@ -26,13 +26,20 @@ import org.jspecify.annotations.Nullable;
  * you lose it rather than a warning nobody reads.
  *
  * <p>The contents are a data attachment Fabric syncs to their owner and no-one else, which is what
- * lets the client draw the item without this module inventing a packet for it. They are not
- * persisted: logging out empties the bin, because a trash can whose contents survive a restart is
- * a chest with one slot.
+ * lets the client draw the item without this module inventing a packet for it. They are saved with
+ * the player, so a crash cannot be the thing that empties the bin — the recovery is worth nothing
+ * if it only lasts as long as the session, since a crash is exactly when you find out you wanted
+ * something back.
+ *
+ * <p>It deliberately does not survive death. Vanilla drops your inventory when you die, and a slot
+ * that held one item through that would be a keep-inventory slot for whatever you cared about most
+ * — bin the netherite sword before a risky fight, take it back afterwards. Saving through a
+ * restart costs nothing because logging out does not drop anything.
  */
 public final class TrashSlot {
 	public static final AttachmentType<ItemStack> HELD = AttachmentRegistry.create(
 			Overhaul.id("trashed_item"), builder -> builder
+					.persistent(ItemStack.OPTIONAL_CODEC)
 					.syncWith(ItemStack.OPTIONAL_STREAM_CODEC, AttachmentSyncPredicate.targetOnly())
 					.initializer(() -> ItemStack.EMPTY));
 
