@@ -96,11 +96,7 @@ public final class ContainerButtons {
 		}
 
 		if (trash) {
-			buttons.add(Button.builder(Component.translatable("button.overhaul.trash"),
-							press -> ClientPlayNetworking.send(TrashPayload.INSTANCE))
-					.size(WIDTH, HEIGHT)
-					.tooltip(Tooltip.create(Component.translatable("tooltip.overhaul.trash")))
-					.build());
+			buttons.add(new TrashSlotWidget(() -> ClientPlayNetworking.send(TrashPayload.INSTANCE)));
 		}
 
 		if (buttons.isEmpty()) {
@@ -159,13 +155,20 @@ public final class ContainerButtons {
 		int right = left + InventoryScreens.panelWidth(screen) + GAP;
 		int x = right + WIDTH <= screen.width ? right : left - WIDTH - GAP;
 
-		int column = buttons.size() * HEIGHT + (buttons.size() - 1) * GAP;
+		int column = -GAP;
+
+		for (AbstractWidget button : buttons) {
+			column += button.getHeight() + GAP;
+		}
+
 		int y = InventoryScreens.top(screen) + InventoryScreens.panelHeight(screen) - column;
 
 		for (AbstractWidget button : buttons) {
-			button.setX(x);
+			// The bin is a slot rather than a button, so it is narrower than the rest; centring
+			// keeps the column reading as one thing instead of a ragged edge.
+			button.setX(x + (WIDTH - button.getWidth()) / 2);
 			button.setY(y);
-			y += HEIGHT + GAP;
+			y += button.getHeight() + GAP;
 		}
 	}
 }

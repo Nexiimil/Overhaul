@@ -8,7 +8,6 @@ import java.util.function.IntPredicate;
 import com.overhaul.core.CarriedContainer;
 import com.overhaul.core.OverhaulModule;
 import com.overhaul.core.config.ConfigManager;
-import com.overhaul.module.backpack.BackpackItem;
 
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
@@ -30,8 +29,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Handling items in bulk: quick-stacking into the containers around you, sorting the one in front
- * of you, marking slots to be left alone, throwing something away, and opening a container item
- * where it sits rather than placing it down first.
+ * of you, marking slots to be left alone, binning something, and opening a shulker box in your hand
+ * rather than having to place it down first.
  *
  * <p>All of it is driven from the client — buttons on any nine-wide container screen, and keys for
  * the rest — and none of it is decided there. The client says "quick-stack from my inventory" or
@@ -48,8 +47,6 @@ public class InventoryModule implements OverhaulModule {
 	 * the rest touch one container the player already has open, or one slot.
 	 */
 	private final Map<UUID, Long> lastQuickStack = new HashMap<>();
-
-	private final Trash trash = new Trash();
 
 	@Override
 	public String id() {
@@ -69,6 +66,7 @@ public class InventoryModule implements OverhaulModule {
 	@Override
 	public void registerContent() {
 		SlotLocks.init();
+		TrashSlot.init();
 	}
 
 	@Override
@@ -78,7 +76,6 @@ public class InventoryModule implements OverhaulModule {
 		PayloadTypeRegistry.serverboundPlay().register(TrashPayload.TYPE, TrashPayload.STREAM_CODEC);
 		PayloadTypeRegistry.serverboundPlay()
 				.register(ToggleSlotLockPayload.TYPE, ToggleSlotLockPayload.STREAM_CODEC);
-		PayloadTypeRegistry.serverboundPlay().register(OpenCarriedPayload.TYPE, OpenCarriedPayload.STREAM_CODEC);
 		PayloadTypeRegistry.clientboundPlay()
 				.register(InventorySettingsPayload.TYPE, InventorySettingsPayload.STREAM_CODEC);
 
@@ -90,16 +87,12 @@ public class InventoryModule implements OverhaulModule {
 				(payload, context) -> onTrash(context.player()));
 		ServerPlayNetworking.registerGlobalReceiver(ToggleSlotLockPayload.TYPE,
 				(payload, context) -> onToggleSlotLock(payload, context.player()));
-		ServerPlayNetworking.registerGlobalReceiver(OpenCarriedPayload.TYPE,
-				(payload, context) -> onOpenCarried(payload, context.player()));
 
 		registerShulkerUse();
 
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> sendSettings(handler.getPlayer()));
-		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
-			lastQuickStack.remove(handler.getPlayer().getUUID());
-			trash.forget(handler.getPlayer());
-		});
+		ServerPlayConnectionEvents.DISCONNECT.register(
+				(handler, server) -> lastQuickStack.remove(handler.getPlayer().getUUID()));
 	}
 
 	private void sendSettings(ServerPlayer player) {
@@ -227,14 +220,14 @@ public class InventoryModule implements OverhaulModule {
 
 	// Trash ---------------------------------------------------------------------------------------
 
-	private void onTrash(ServerPlayer player) {
+	private static void onTrash(ServerPlayer player) {
 		InventoryConfig settings = config;
 
 		if (settings == null || !settings.trashEnabled) {
 			return;
 		}
 
-		Component message = trash.press(player);
+		Component message = TrashSlot.press(player);
 
 		if (message == null) {
 			return;
@@ -248,8 +241,9 @@ public class InventoryModule implements OverhaulModule {
 	// Opening a container item in place -------------------------------------------------------------
 
 	/**
-	 * Using a shulker box in the air opens it. Placement is untouched: that goes through a
-	 * different interaction, so aiming at a block still puts the box down.
+	 * Right-clicking a shulker box in your hand opens it, the same gesture that opens a backpack.
+	 * Placement is untouched: putting a block down goes through a different interaction entirely,
+	 * so aiming at a block still places the box as it always did.
 	 */
 	private void registerShulkerUse() {
 		UseItemCallback.EVENT.register((player, level, hand) -> {
@@ -267,30 +261,6 @@ public class InventoryModule implements OverhaulModule {
 			openShulkerBox(player, held);
 			return InteractionResult.CONSUME;
 		});
-	}
-
-	private static void onOpenCarried(OpenCarriedPayload payload, ServerPlayer player) {
-		InventoryConfig settings = config;
-
-		if (settings == null) {
-			return;
-		}
-
-		int slot = payload.slot();
-
-		if (slot < 0 || slot >= Inventory.INVENTORY_SIZE) {
-			return;
-		}
-
-		ItemStack stack = player.getInventory().getItem(slot);
-
-		// A backpack already knows how to open itself, and does so whether or not this module is
-		// the one asking; only the shulker box is this module's own addition.
-		if (stack.getItem() instanceof BackpackItem) {
-			BackpackItem.open(player, stack);
-		} else if (settings.openShulkerBoxes && isShulkerBox(stack)) {
-			openShulkerBox(player, stack);
-		}
 	}
 
 	private static void openShulkerBox(Player player, ItemStack stack) {

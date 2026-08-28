@@ -6,9 +6,9 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import com.overhaul.module.backpack.BackpackItem;
 import com.overhaul.module.inventory.FillOrder;
-import com.overhaul.module.inventory.OpenCarriedPayload;
 import com.overhaul.module.inventory.SlotLocks;
 import com.overhaul.module.inventory.ToggleSlotLockPayload;
+import com.overhaul.module.inventory.TrashSlot;
 import com.overhaul.module.inventory.TrashPayload;
 import com.overhaul.module.inventory.QuickStackPayload;
 import com.overhaul.module.inventory.SortMode;
@@ -31,6 +31,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.attribute.EnvironmentAttributes;
 import net.minecraft.world.clock.WorldClock;
@@ -675,10 +676,16 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 		});
 	}
 
-	/** Opens the inventory with a slot locked so the mark it draws can be looked at. */
-	private static void lockScreenshot(ClientGameTestContext context, TestSingleplayerContext singleplayer) {
+	/** Opens the inventory so the bin, and whatever it is holding, can be looked at. */
+	private static void trashScreenshot(ClientGameTestContext context, TestSingleplayerContext singleplayer) {
 		singleplayer.getConnection().waitForClientboundPackets();
+		openOwnInventory(context);
+		context.takeScreenshot("overhaul-trash-slot");
+		context.setScreen(() -> null);
+		context.waitTicks(2);
+	}
 
+	private static void openOwnInventory(ClientGameTestContext context) {
 		context.setScreen(() -> {
 			LocalPlayer player = Minecraft.getInstance().player;
 
@@ -690,14 +697,21 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 		});
 
 		context.waitTicks(5);
+	}
+
+	/** Opens the inventory with a slot locked so the mark it draws can be looked at. */
+	private static void lockScreenshot(ClientGameTestContext context, TestSingleplayerContext singleplayer) {
+		singleplayer.getConnection().waitForClientboundPackets();
+		openOwnInventory(context);
 		context.takeScreenshot("overhaul-locked-slot");
 		context.setScreen(() -> null);
 		context.waitTicks(2);
 	}
 
 	/**
-	 * Destroys a stack off the cursor and takes it back again. The undo is the reason the button is
-	 * safe to have at all, so it is worth an assertion rather than a comment.
+	 * Puts a stack in the bin and takes it back again. Holding the last item is the reason the bin
+	 * is safe to click at all, so it is worth an assertion rather than a comment — and the item
+	 * being visible in the slot is the whole point of it being a slot.
 	 */
 	private static void checkTrashVoidsAndGivesBack(ClientGameTestContext context,
 			TestSingleplayerContext singleplayer) {
@@ -712,10 +726,16 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 		context.waitTicks(2);
 
 		singleplayer.getServer().runOnServer(server -> {
-			if (!onlyPlayer(server).containerMenu.getCarried().isEmpty()) {
-				throw new AssertionError("The trash should have taken the held pickaxe");
+			ServerPlayer player = onlyPlayer(server);
+
+			if (!player.containerMenu.getCarried().isEmpty()) {
+				throw new AssertionError("The bin should have taken the held pickaxe");
 			}
+
+			expect(TrashSlot.contents(player), "minecraft:diamond_pickaxe", 1, "the bin itself");
 		});
+
+		trashScreenshot(context, singleplayer);
 
 		context.runOnClient(client -> ClientPlayNetworking.send(TrashPayload.INSTANCE));
 		singleplayer.getConnection().waitForServerboundPackets();
@@ -729,7 +749,7 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 	}
 
 	/**
-	 * Opens a shulker box sitting in the inventory and checks it is the real thing: the right
+	 * Right-clicks a shulker box held in hand and checks what opens is the real thing: the right
 	 * number of slots, holding what the item held, and writing back to the item afterwards.
 	 */
 	private static void checkShulkerBoxOpensWhereItSits(ClientGameTestContext context,
@@ -741,11 +761,18 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 			ItemStack box = new ItemStack(item("minecraft:shulker_box"));
 			box.set(DataComponents.CONTAINER,
 					ItemContainerContents.fromItems(List.of(new ItemStack(item("minecraft:emerald"), 5))));
-			player.getInventory().setItem(9, box);
+			player.setItemInHand(InteractionHand.MAIN_HAND, box);
+
+			// The real use interaction rather than a call straight into the module, so what is
+			// under test includes the hook actually firing for a shulker box.
+			ItemStack held = player.getItemInHand(InteractionHand.MAIN_HAND);
+			InteractionResult result = player.gameMode.useItem(player, player.level(), held, InteractionHand.MAIN_HAND);
+
+			if (result == InteractionResult.PASS) {
+				throw new AssertionError("Using a shulker box in hand should have been handled");
+			}
 		});
 
-		context.runOnClient(client -> ClientPlayNetworking.send(new OpenCarriedPayload(9)));
-		singleplayer.getConnection().waitForServerboundPackets();
 		singleplayer.getConnection().waitForClientboundPackets();
 		context.waitForScreen(AbstractContainerScreen.class);
 
@@ -772,8 +799,8 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 		context.waitTicks(5);
 
 		singleplayer.getServer().runOnServer(server -> {
-			ItemStack box = onlyPlayer(server).getInventory().getItem(9);
-			expect(box, "minecraft:shulker_box", 1, "the slot the shulker box was opened from");
+			ItemStack box = onlyPlayer(server).getItemInHand(InteractionHand.MAIN_HAND);
+			expect(box, "minecraft:shulker_box", 1, "the hand the shulker box was opened from");
 
 			List<ItemStack> contents = box.getOrDefault(DataComponents.CONTAINER, ItemContainerContents.EMPTY)
 					.nonEmptyItemCopyStream().toList();
@@ -782,7 +809,9 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 				throw new AssertionError("The shulker box should have kept both stacks, had " + contents.size());
 			}
 
-			onlyPlayer(server).getInventory().clearContent();
+			ServerPlayer player = onlyPlayer(server);
+			player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
+			player.getInventory().clearContent();
 		});
 	}
 

@@ -22,13 +22,10 @@ public class InventoryConfig {
 	/** Whether a key can mark one of your own slots to be left out of sorts and quick-stacks. */
 	public boolean lockSlotsEnabled = true;
 
-	/** Whether the trash target appears. It voids the stack on your cursor, with one step of undo. */
+	/** Whether the bin appears. It holds one item: putting something in destroys what was there. */
 	public boolean trashEnabled = true;
 
-	/**
-	 * Whether a shulker box opens where it sits instead of having to be placed down first. Applies
-	 * to using one in your hand and to the open key in an inventory screen.
-	 */
+	/** Whether right-clicking a shulker box in your hand opens it instead of doing nothing. */
 	public boolean openShulkerBoxes = true;
 
 	/** How far a container can be and still be quick-stacked into, measured from the player. */

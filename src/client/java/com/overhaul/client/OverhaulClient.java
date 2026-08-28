@@ -30,8 +30,6 @@ public class OverhaulClient implements ClientModInitializer {
 	private static final KeyMapping TOGGLE_SLOT_LOCK =
 			new KeyMapping("key.overhaul.toggle_slot_lock", GLFW.GLFW_KEY_L, CATEGORY);
 
-	private static final KeyMapping OPEN_CARRIED =
-			new KeyMapping("key.overhaul.open_carried", GLFW.GLFW_KEY_C, CATEGORY);
 
 	@Override
 	public void onInitializeClient() {
@@ -58,9 +56,9 @@ public class OverhaulClient implements ClientModInitializer {
 	}
 
 	/**
-	 * One key quick-stacks from the inventory without opening anything; the other two act on the
-	 * slot the cursor is over inside a container screen. All of them are only ever a request — the
-	 * server decides what each one actually reaches.
+	 * One key quick-stacks from the inventory without opening anything; the other locks the slot
+	 * the cursor is over inside a container screen. Both are only ever a request — the server
+	 * decides what each one actually reaches.
 	 */
 	private static void registerInventory() {
 		if (!ModuleManager.isEnabled("inventory")) {
@@ -68,11 +66,10 @@ public class OverhaulClient implements ClientModInitializer {
 		}
 
 		ContainerButtons.register();
-		SlotKeys.register(TOGGLE_SLOT_LOCK, OPEN_CARRIED);
+		SlotKeys.register(TOGGLE_SLOT_LOCK);
 
 		KeyMappingHelper.registerKeyMapping(QUICK_STACK);
 		KeyMappingHelper.registerKeyMapping(TOGGLE_SLOT_LOCK);
-		KeyMappingHelper.registerKeyMapping(OPEN_CARRIED);
 
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			while (QUICK_STACK.consumeClick()) {

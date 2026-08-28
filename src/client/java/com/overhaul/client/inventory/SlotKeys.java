@@ -1,6 +1,5 @@
 package com.overhaul.client.inventory;
 
-import com.overhaul.module.inventory.OpenCarriedPayload;
 import com.overhaul.module.inventory.SlotLocks;
 import com.overhaul.module.inventory.ToggleSlotLockPayload;
 
@@ -16,7 +15,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.inventory.Slot;
 
 /**
- * The two keys that act on whichever slot the cursor is over, and the marks one of them leaves.
+ * The key that locks whichever slot the cursor is over, and the marks it leaves.
  *
  * <p>A key rather than a click, because every mouse button in a container screen already means
  * something and taking one over would cost more than it gave. Pointing at a slot and pressing a
@@ -34,14 +33,14 @@ public final class SlotKeys {
 	private SlotKeys() {
 	}
 
-	public static void register(KeyMapping toggleLock, KeyMapping openCarried) {
+	public static void register(KeyMapping toggleLock) {
 		ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> {
 			if (!(screen instanceof AbstractContainerScreen<?> container) || !InventoryScreens.handles(screen)) {
 				return;
 			}
 
 			ScreenKeyboardEvents.afterKeyPress(screen)
-					.register((current, event) -> onKeyPress(container, event, toggleLock, openCarried));
+					.register((current, event) -> onKeyPress(container, event, toggleLock));
 
 			// Drawn after the screen is done rather than among its own layers, so the marks land
 			// over the items they describe and in the screen's own coordinates.
@@ -50,19 +49,14 @@ public final class SlotKeys {
 		});
 	}
 
-	private static void onKeyPress(AbstractContainerScreen<?> screen, KeyEvent event,
-			KeyMapping toggleLock, KeyMapping openCarried) {
+	private static void onKeyPress(AbstractContainerScreen<?> screen, KeyEvent event, KeyMapping toggleLock) {
 		int slot = InventoryScreens.playerSlot(InventoryScreens.hovered(screen));
 
-		if (slot < 0) {
+		if (slot < 0 || !toggleLock.matches(event) || !ClientPlayNetworking.canSend(ToggleSlotLockPayload.TYPE)) {
 			return;
 		}
 
-		if (toggleLock.matches(event) && ClientPlayNetworking.canSend(ToggleSlotLockPayload.TYPE)) {
-			ClientPlayNetworking.send(new ToggleSlotLockPayload(slot));
-		} else if (openCarried.matches(event) && ClientPlayNetworking.canSend(OpenCarriedPayload.TYPE)) {
-			ClientPlayNetworking.send(new OpenCarriedPayload(slot));
-		}
+		ClientPlayNetworking.send(new ToggleSlotLockPayload(slot));
 	}
 
 	private static void drawLocks(AbstractContainerScreen<?> screen, GuiGraphicsExtractor graphics) {
