@@ -7,6 +7,7 @@ import com.overhaul.core.data.RuntimeDataPack;
 import com.overhaul.module.backpack.BackpackModule;
 import com.overhaul.module.magical.MagicalModule;
 import com.overhaul.module.mob.MobModule;
+import com.overhaul.module.quickstack.QuickStackModule;
 import com.overhaul.module.tasty.TastyModule;
 
 import net.fabricmc.api.ModInitializer;
@@ -28,6 +29,7 @@ public class Overhaul implements ModInitializer {
 		ModuleManager.register(new BackpackModule());
 		ModuleManager.register(new MagicalModule());
 		ModuleManager.register(new MobModule());
+		ModuleManager.register(new QuickStackModule());
 
 		ModuleManager.bootstrap();
 		RuntimeDataPack.rebuild();

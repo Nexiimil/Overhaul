@@ -5,8 +5,13 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 import com.overhaul.module.backpack.BackpackItem;
+import com.overhaul.module.quickstack.FillOrder;
+import com.overhaul.module.quickstack.QuickStackPayload;
+import com.overhaul.module.quickstack.SortMode;
+import com.overhaul.module.quickstack.SortPayload;
 
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestServerConnection;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
@@ -20,6 +25,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.attribute.EnvironmentAttributes;
 import net.minecraft.world.clock.WorldClock;
 import net.minecraft.world.effect.MobEffects;
@@ -32,6 +38,8 @@ import net.minecraft.world.item.crafting.CraftingInput;
 import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeType;
+import net.minecraft.world.Container;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.MoonPhase;
 import net.minecraft.world.level.chunk.ChunkAccess;
 
@@ -58,6 +66,8 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 			checkEloteCraftsWithBothFlavours(singleplayer);
 			checkBackpackOpens(context, singleplayer);
 			checkOverburdenedSlowsYouDown(context, singleplayer);
+			checkQuickStackFollowsWhatIsAlreadyThere(context, singleplayer);
+			checkSortObeysBothToggles(context, singleplayer);
 			checkMoonBendsWithoutMovingTheClock(context, singleplayer);
 			checkDifficultyCeilingIsDerivedNotAssumed(singleplayer);
 			bendTheMoonAndLeaveIt(context, singleplayer, rotated, held);
@@ -453,6 +463,152 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 
 			run(server, "overhaul difficulty reset");
 		});
+	}
+
+	/**
+	 * Rings the player with chests and checks a quick-stack only reaches the ones that were already
+	 * holding the item — not the chest out of range, and not with the backpack, which stays put
+	 * even though a chest in range holds one.
+	 */
+	private static void checkQuickStackFollowsWhatIsAlreadyThere(ClientGameTestContext context,
+			TestSingleplayerContext singleplayer) {
+		AtomicReference<BlockPos> origin = new AtomicReference<>();
+
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			ServerLevel level = player.level();
+			BlockPos base = player.blockPosition();
+			origin.set(base);
+
+			// The near chest holds a backpack as well, so the run has something the item filter has
+			// to refuse rather than something it never had the chance to move.
+			placeChest(level, base.offset(2, 0, 0),
+					new ItemStack(item("minecraft:cobblestone")), new ItemStack(item("overhaul:backpack")));
+			placeChest(level, base.offset(-2, 0, 0), new ItemStack(item("minecraft:dirt")));
+
+			// Eight blocks out, well past the five block radius, and holding the one thing the
+			// player is carrying that nothing nearby wants.
+			placeChest(level, base.offset(8, 0, 0), new ItemStack(item("minecraft:gold_ingot")));
+
+			Inventory inventory = player.getInventory();
+			inventory.clearContent();
+			inventory.setItem(9, new ItemStack(item("minecraft:cobblestone"), 32));
+			inventory.setItem(10, new ItemStack(item("minecraft:dirt"), 32));
+			inventory.setItem(11, new ItemStack(item("minecraft:gold_ingot"), 32));
+			inventory.setItem(12, new ItemStack(item("overhaul:backpack")));
+		});
+
+		context.runOnClient(client -> ClientPlayNetworking.send(new QuickStackPayload(false)));
+		singleplayer.getConnection().waitForServerboundPackets();
+		context.waitTicks(2);
+
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			ServerLevel level = player.level();
+			BlockPos base = origin.get();
+
+			Container near = chestAt(level, base.offset(2, 0, 0));
+			Container other = chestAt(level, base.offset(-2, 0, 0));
+			Container far = chestAt(level, base.offset(8, 0, 0));
+
+			expect(near.getItem(0), "minecraft:cobblestone", 33, "the chest that already held cobblestone");
+			expect(other.getItem(0), "minecraft:dirt", 33, "the chest that already held dirt");
+			expect(far.getItem(0), "minecraft:gold_ingot", 1, "the chest out of range");
+
+			if (near.getItem(1).getCount() != 1) {
+				throw new AssertionError("A backpack should never be quick-stacked, but the chest ended up with "
+						+ near.getItem(1).getCount());
+			}
+
+			Inventory inventory = player.getInventory();
+			expect(inventory.getItem(11), "minecraft:gold_ingot", 32, "the player, with nothing nearby wanting gold");
+			expect(inventory.getItem(12), "overhaul:backpack", 1, "the player, who keeps their backpack");
+
+			if (!inventory.getItem(9).isEmpty() || !inventory.getItem(10).isEmpty()) {
+				throw new AssertionError("Cobblestone and dirt should both have left the inventory");
+			}
+		});
+	}
+
+	/**
+	 * Sorts the player's own inventory twice, once per setting of each toggle, and checks both
+	 * halves of the arrangement: what the order is, and which way it runs across the grid. The two
+	 * item sets are chosen so the two modes disagree — grouping by mod puts the modded cheese last,
+	 * where sorting by name puts it second.
+	 */
+	private static void checkSortObeysBothToggles(ClientGameTestContext context,
+			TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			Inventory inventory = onlyPlayer(server).getInventory();
+			inventory.clearContent();
+			inventory.setItem(20, new ItemStack(item("minecraft:diamond")));
+			inventory.setItem(24, new ItemStack(item("overhaul:cheese")));
+			inventory.setItem(31, new ItemStack(item("minecraft:apple")));
+
+			// Split on purpose: a sort that does not merge partial stacks leaves the mess it was
+			// meant to clear up.
+			inventory.setItem(14, new ItemStack(item("minecraft:cobblestone"), 10));
+			inventory.setItem(35, new ItemStack(item("minecraft:cobblestone"), 10));
+		});
+
+		context.runOnClient(client ->
+				ClientPlayNetworking.send(new SortPayload(SortMode.BY_MOD, FillOrder.HORIZONTAL, true)));
+		singleplayer.getConnection().waitForServerboundPackets();
+		context.waitTicks(2);
+
+		singleplayer.getServer().runOnServer(server -> {
+			Inventory inventory = onlyPlayer(server).getInventory();
+
+			// Vanilla first, alphabetically, then everything Overhaul added.
+			expect(inventory.getItem(9), "minecraft:apple", 1, "the first slot of a mod-grouped sort");
+			expect(inventory.getItem(10), "minecraft:cobblestone", 20, "the second slot, merged from two stacks");
+			expect(inventory.getItem(11), "minecraft:diamond", 1, "the third slot");
+			expect(inventory.getItem(12), "overhaul:cheese", 1, "the fourth slot, where the modded item lands");
+		});
+
+		context.runOnClient(client ->
+				ClientPlayNetworking.send(new SortPayload(SortMode.ALPHABETICAL, FillOrder.VERTICAL, true)));
+		singleplayer.getConnection().waitForServerboundPackets();
+		context.waitTicks(2);
+
+		singleplayer.getServer().runOnServer(server -> {
+			Inventory inventory = onlyPlayer(server).getInventory();
+
+			// Three rows of nine filled column by column: the first three items run down the left
+			// edge, and the fourth starts the next column.
+			expect(inventory.getItem(9), "minecraft:apple", 1, "the top of the first column");
+			expect(inventory.getItem(18), "overhaul:cheese", 1, "the middle of the first column");
+			expect(inventory.getItem(27), "minecraft:cobblestone", 20, "the bottom of the first column");
+			expect(inventory.getItem(10), "minecraft:diamond", 1, "the top of the second column");
+		});
+
+		singleplayer.getServer().runOnServer(server -> onlyPlayer(server).getInventory().clearContent());
+	}
+
+	private static void placeChest(ServerLevel level, BlockPos pos, ItemStack... contents) {
+		level.setBlockAndUpdate(pos, Blocks.CHEST.defaultBlockState());
+		Container chest = chestAt(level, pos);
+
+		for (int slot = 0; slot < contents.length; slot++) {
+			chest.setItem(slot, contents[slot]);
+		}
+
+		chest.setChanged();
+	}
+
+	private static Container chestAt(ServerLevel level, BlockPos pos) {
+		if (!(level.getBlockEntity(pos) instanceof Container chest)) {
+			throw new AssertionError("No chest at " + pos);
+		}
+
+		return chest;
+	}
+
+	private static void expect(ItemStack stack, String id, int count, String where) {
+		if (stack.getItem() != item(id) || stack.getCount() != count) {
+			throw new AssertionError("Expected " + count + " " + id + " in " + where
+					+ ", found " + stack.getCount() + " " + BuiltInRegistries.ITEM.getKey(stack.getItem()));
+		}
 	}
 
 	private static MoonPhase phaseAt(ServerLevel level, BlockPos pos) {

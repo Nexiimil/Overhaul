@@ -1,9 +1,11 @@
 package com.overhaul.client;
 
+import com.overhaul.client.quickstack.ContainerButtons;
 import com.overhaul.core.ModuleManager;
 import com.overhaul.core.MoonLock;
 import com.overhaul.core.MoonLockPayload;
 import com.overhaul.module.backpack.OpenBackpackPayload;
+import com.overhaul.module.quickstack.QuickStackPayload;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -15,16 +17,24 @@ import net.minecraft.resources.Identifier;
 import org.lwjgl.glfw.GLFW;
 
 public class OverhaulClient implements ClientModInitializer {
-	private static final KeyMapping OPEN_BACKPACK = new KeyMapping(
-			"key.overhaul.open_backpack",
-			GLFW.GLFW_KEY_B,
-			KeyMapping.Category.register(Identifier.fromNamespaceAndPath("overhaul", "overhaul")));
+	private static final KeyMapping.Category CATEGORY =
+			KeyMapping.Category.register(Identifier.fromNamespaceAndPath("overhaul", "overhaul"));
+
+	private static final KeyMapping OPEN_BACKPACK =
+			new KeyMapping("key.overhaul.open_backpack", GLFW.GLFW_KEY_B, CATEGORY);
+
+	private static final KeyMapping QUICK_STACK =
+			new KeyMapping("key.overhaul.quick_stack", GLFW.GLFW_KEY_V, CATEGORY);
 
 	@Override
 	public void onInitializeClient() {
 		ModuleManager.initClient();
 		registerMoonLock();
+		registerBackpackKey();
+		registerQuickStack();
+	}
 
+	private static void registerBackpackKey() {
 		if (!ModuleManager.isEnabled("backpack")) {
 			return;
 		}
@@ -35,6 +45,27 @@ public class OverhaulClient implements ClientModInitializer {
 			while (OPEN_BACKPACK.consumeClick()) {
 				if (client.player != null) {
 					ClientPlayNetworking.send(OpenBackpackPayload.INSTANCE);
+				}
+			}
+		});
+	}
+
+	/**
+	 * The key quick-stacks from the inventory; the buttons in container screens cover everything
+	 * else. Both are only ever a request — the server decides what a quick-stack reaches.
+	 */
+	private static void registerQuickStack() {
+		if (!ModuleManager.isEnabled("quickstack")) {
+			return;
+		}
+
+		ContainerButtons.register();
+		KeyMappingHelper.registerKeyMapping(QUICK_STACK);
+
+		ClientTickEvents.END_CLIENT_TICK.register(client -> {
+			while (QUICK_STACK.consumeClick()) {
+				if (client.player != null) {
+					ClientPlayNetworking.send(new QuickStackPayload(false));
 				}
 			}
 		});
