@@ -1,4 +1,4 @@
-package com.overhaul.module.quickstack;
+package com.overhaul.module.inventory;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -47,7 +47,7 @@ final class QuickStack {
 	 * @param from first source slot, inclusive
 	 * @param to last source slot, exclusive
 	 */
-	static int run(ServerPlayer player, Container source, int from, int to, QuickStackConfig config) {
+	static int run(ServerPlayer player, Container source, int from, int to, InventoryConfig config) {
 		ServerLevel level = player.level();
 		double radius = Math.clamp(config.radius, 0.0, MAX_RADIUS);
 		List<Container> targets = new ArrayList<>(
@@ -82,7 +82,7 @@ final class QuickStack {
 	}
 
 	private static int offer(Container source, int slot, List<Container> targets,
-			List<Set<Item>> holdings, QuickStackConfig config) {
+			List<Set<Item>> holdings, InventoryConfig config) {
 		int moved = 0;
 
 		for (int index = 0; index < targets.size(); index++) {
@@ -111,7 +111,7 @@ final class QuickStack {
 	}
 
 	/** Whether this container already holds the item, which is the whole condition for moving it. */
-	private static boolean holds(Container target, Set<Item> items, ItemStack stack, QuickStackConfig config) {
+	private static boolean holds(Container target, Set<Item> items, ItemStack stack, InventoryConfig config) {
 		if (!items.contains(stack.getItem())) {
 			return false;
 		}
@@ -129,7 +129,7 @@ final class QuickStack {
 		return false;
 	}
 
-	private static boolean movable(ItemStack stack, QuickStackConfig config) {
+	private static boolean movable(ItemStack stack, InventoryConfig config) {
 		// A backpack is never sent away, whatever the config says: quick-stacking your own storage
 		// into a chest empties your inventory into a bag you then have to go and fetch.
 		return !stack.isEmpty()

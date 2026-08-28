@@ -1,5 +1,5 @@
 /**
- * Quick-stacking into nearby containers, and sorting the one you have open.
+ * The buttons that drive quick-stacking and sorting, and the preference behind them.
  *
  * <p>Marked {@link org.jspecify.annotations.NullMarked}: every type here is non-null unless it
  * carries {@link org.jspecify.annotations.Nullable}. Minecraft itself is null-marked, so matching
@@ -7,6 +7,6 @@
  * as an unchecked conversion.
  */
 @NullMarked
-package com.overhaul.module.quickstack;
+package com.overhaul.client.inventory;
 
 import org.jspecify.annotations.NullMarked;

@@ -5,10 +5,10 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 import com.overhaul.module.backpack.BackpackItem;
-import com.overhaul.module.quickstack.FillOrder;
-import com.overhaul.module.quickstack.QuickStackPayload;
-import com.overhaul.module.quickstack.SortMode;
-import com.overhaul.module.quickstack.SortPayload;
+import com.overhaul.module.inventory.FillOrder;
+import com.overhaul.module.inventory.QuickStackPayload;
+import com.overhaul.module.inventory.SortMode;
+import com.overhaul.module.inventory.SortPayload;
 
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;

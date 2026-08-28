@@ -1,4 +1,4 @@
-package com.overhaul.module.quickstack;
+package com.overhaul.module.inventory;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -28,8 +28,8 @@ import org.jspecify.annotations.Nullable;
  * what that means, so nothing a modified client sends can reach a container the player is not
  * standing at.
  */
-public class QuickStackModule implements OverhaulModule {
-	private static @Nullable QuickStackConfig config;
+public class InventoryModule implements OverhaulModule {
+	private static @Nullable InventoryConfig config;
 
 	/**
 	 * Last tick each player quick-stacked on, so a client holding the key down cannot make the
@@ -40,17 +40,17 @@ public class QuickStackModule implements OverhaulModule {
 
 	@Override
 	public String id() {
-		return "quickstack";
+		return "inventory";
 	}
 
 	@Override
 	public String displayName() {
-		return "Quick Stack Module";
+		return "Inventory Module";
 	}
 
 	@Override
 	public void loadConfig() {
-		config = ConfigManager.load(id(), QuickStackConfig.class);
+		config = ConfigManager.load(id(), InventoryConfig.class);
 	}
 
 	@Override
@@ -58,7 +58,7 @@ public class QuickStackModule implements OverhaulModule {
 		PayloadTypeRegistry.serverboundPlay().register(QuickStackPayload.TYPE, QuickStackPayload.STREAM_CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(SortPayload.TYPE, SortPayload.STREAM_CODEC);
 		PayloadTypeRegistry.clientboundPlay()
-				.register(QuickStackSettingsPayload.TYPE, QuickStackSettingsPayload.STREAM_CODEC);
+				.register(InventorySettingsPayload.TYPE, InventorySettingsPayload.STREAM_CODEC);
 
 		ServerPlayNetworking.registerGlobalReceiver(QuickStackPayload.TYPE,
 				(payload, context) -> onQuickStack(payload, context.player()));
@@ -71,15 +71,15 @@ public class QuickStackModule implements OverhaulModule {
 	}
 
 	private void sendSettings(ServerPlayer player) {
-		QuickStackConfig settings = config;
+		InventoryConfig settings = config;
 
-		if (settings == null || !ServerPlayNetworking.canSend(player, QuickStackSettingsPayload.TYPE)) {
+		if (settings == null || !ServerPlayNetworking.canSend(player, InventorySettingsPayload.TYPE)) {
 			return;
 		}
 
 		boolean buttons = settings.buttons.enabled;
 
-		ServerPlayNetworking.send(player, new QuickStackSettingsPayload(
+		ServerPlayNetworking.send(player, new InventorySettingsPayload(
 				buttons && settings.quickStackEnabled,
 				buttons && settings.sortEnabled,
 				buttons && settings.buttons.inPlayerInventory));
@@ -88,7 +88,7 @@ public class QuickStackModule implements OverhaulModule {
 	// Quick-stacking ------------------------------------------------------------------------------
 
 	private void onQuickStack(QuickStackPayload payload, ServerPlayer player) {
-		QuickStackConfig settings = config;
+		InventoryConfig settings = config;
 
 		if (settings == null || !settings.quickStackEnabled || onCooldown(player, settings)) {
 			return;
@@ -123,7 +123,7 @@ public class QuickStackModule implements OverhaulModule {
 		report(player, moved);
 	}
 
-	private boolean onCooldown(ServerPlayer player, QuickStackConfig settings) {
+	private boolean onCooldown(ServerPlayer player, InventoryConfig settings) {
 		if (settings.cooldownTicks <= 0) {
 			return false;
 		}
@@ -153,7 +153,7 @@ public class QuickStackModule implements OverhaulModule {
 	// Sorting -------------------------------------------------------------------------------------
 
 	private void onSort(SortPayload payload, ServerPlayer player) {
-		QuickStackConfig settings = config;
+		InventoryConfig settings = config;
 
 		if (settings == null || !settings.sortEnabled) {
 			return;

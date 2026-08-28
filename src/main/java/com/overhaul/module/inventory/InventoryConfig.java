@@ -1,15 +1,15 @@
-package com.overhaul.module.quickstack;
+package com.overhaul.module.inventory;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * {@code config/overhaul/quickstack.json}.
+ * {@code config/overhaul/inventory.json}.
  *
  * <p>Entries in the two id lists are block or item ids, or a tag written with a leading
  * {@code #}, which is the same shorthand the tasty module's ingredient lists use.
  */
-public class QuickStackConfig {
+public class InventoryConfig {
 	public String _comment = "Quick-stacking sends a stack to a nearby container that already holds "
 			+ "that item. List entries are ids, or tags written with a leading '#'. Sorting works on "
 			+ "any container you have open, including your own inventory.";

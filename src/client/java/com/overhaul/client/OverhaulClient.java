@@ -1,11 +1,11 @@
 package com.overhaul.client;
 
-import com.overhaul.client.quickstack.ContainerButtons;
+import com.overhaul.client.inventory.ContainerButtons;
 import com.overhaul.core.ModuleManager;
 import com.overhaul.core.MoonLock;
 import com.overhaul.core.MoonLockPayload;
 import com.overhaul.module.backpack.OpenBackpackPayload;
-import com.overhaul.module.quickstack.QuickStackPayload;
+import com.overhaul.module.inventory.QuickStackPayload;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -55,7 +55,7 @@ public class OverhaulClient implements ClientModInitializer {
 	 * else. Both are only ever a request — the server decides what a quick-stack reaches.
 	 */
 	private static void registerQuickStack() {
-		if (!ModuleManager.isEnabled("quickstack")) {
+		if (!ModuleManager.isEnabled("inventory")) {
 			return;
 		}
 

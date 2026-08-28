@@ -1,4 +1,4 @@
-package com.overhaul.module.quickstack;
+package com.overhaul.module.inventory;
 
 import com.overhaul.Overhaul;
 

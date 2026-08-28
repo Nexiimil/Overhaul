@@ -1,4 +1,4 @@
-package com.overhaul.module.quickstack;
+package com.overhaul.module.inventory;
 
 import com.overhaul.Overhaul;
 
@@ -16,18 +16,18 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
  * client connecting to a server without the mod never hears from this at all, which is the same
  * outcome by default.
  */
-public record QuickStackSettingsPayload(boolean quickStack, boolean sort, boolean playerInventory)
+public record InventorySettingsPayload(boolean quickStack, boolean sort, boolean playerInventory)
 		implements CustomPacketPayload {
 
-	public static final CustomPacketPayload.Type<QuickStackSettingsPayload> TYPE =
-			new CustomPacketPayload.Type<>(Overhaul.id("quick_stack_settings"));
+	public static final CustomPacketPayload.Type<InventorySettingsPayload> TYPE =
+			new CustomPacketPayload.Type<>(Overhaul.id("inventory_settings"));
 
-	public static final StreamCodec<RegistryFriendlyByteBuf, QuickStackSettingsPayload> STREAM_CODEC =
+	public static final StreamCodec<RegistryFriendlyByteBuf, InventorySettingsPayload> STREAM_CODEC =
 			StreamCodec.composite(
-					ByteBufCodecs.BOOL, QuickStackSettingsPayload::quickStack,
-					ByteBufCodecs.BOOL, QuickStackSettingsPayload::sort,
-					ByteBufCodecs.BOOL, QuickStackSettingsPayload::playerInventory,
-					QuickStackSettingsPayload::new);
+					ByteBufCodecs.BOOL, InventorySettingsPayload::quickStack,
+					ByteBufCodecs.BOOL, InventorySettingsPayload::sort,
+					ByteBufCodecs.BOOL, InventorySettingsPayload::playerInventory,
+					InventorySettingsPayload::new);
 
 	@Override
 	public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {

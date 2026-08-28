@@ -1,14 +1,14 @@
-package com.overhaul.client.quickstack;
+package com.overhaul.client.inventory;
 
 import java.util.ArrayList;
 import java.util.List;
 
 import com.overhaul.client.mixin.ContainerScreenAccess;
-import com.overhaul.module.quickstack.FillOrder;
-import com.overhaul.module.quickstack.QuickStackPayload;
-import com.overhaul.module.quickstack.QuickStackSettingsPayload;
-import com.overhaul.module.quickstack.SortMode;
-import com.overhaul.module.quickstack.SortPayload;
+import com.overhaul.module.inventory.FillOrder;
+import com.overhaul.module.inventory.QuickStackPayload;
+import com.overhaul.module.inventory.InventorySettingsPayload;
+import com.overhaul.module.inventory.SortMode;
+import com.overhaul.module.inventory.SortPayload;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -47,18 +47,18 @@ public final class ContainerButtons {
 	}
 
 	public static void register() {
-		ClientPlayNetworking.registerGlobalReceiver(QuickStackSettingsPayload.TYPE,
+		ClientPlayNetworking.registerGlobalReceiver(InventorySettingsPayload.TYPE,
 				(payload, context) -> context.client().execute(() -> apply(payload)));
 
 		// Cleared on disconnect so buttons from one server do not linger into a single player
 		// world where the module is switched off.
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> apply(
-				new QuickStackSettingsPayload(false, false, false)));
+				new InventorySettingsPayload(false, false, false)));
 
 		ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> addTo(screen));
 	}
 
-	private static void apply(QuickStackSettingsPayload payload) {
+	private static void apply(InventorySettingsPayload payload) {
 		quickStack = payload.quickStack();
 		sort = payload.sort();
 		playerInventory = payload.playerInventory();

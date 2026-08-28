@@ -1,8 +1,8 @@
-package com.overhaul.client.quickstack;
+package com.overhaul.client.inventory;
 
 import com.overhaul.core.config.ConfigManager;
-import com.overhaul.module.quickstack.FillOrder;
-import com.overhaul.module.quickstack.SortMode;
+import com.overhaul.module.inventory.FillOrder;
+import com.overhaul.module.inventory.SortMode;
 
 import org.jspecify.annotations.Nullable;
 
@@ -15,14 +15,14 @@ import org.jspecify.annotations.Nullable;
  * to remember nothing per player.
  */
 public final class SortPrefs {
-	private static final String FILE = "quickstack-client";
+	private static final String FILE = "inventory-client";
 
 	private static @Nullable Stored stored;
 
 	private SortPrefs() {
 	}
 
-	/** {@code config/overhaul/quickstack-client.json}. */
+	/** {@code config/overhaul/inventory-client.json}. */
 	public static class Stored {
 		public String _comment = "Client-side only: which way the sort buttons in container screens "
 				+ "are set. Changed by clicking them in game.";

@@ -1,4 +1,4 @@
-package com.overhaul.module.quickstack;
+package com.overhaul.module.inventory;
 
 /**
  * Which way a sorted run of items is laid out across a container's grid.
