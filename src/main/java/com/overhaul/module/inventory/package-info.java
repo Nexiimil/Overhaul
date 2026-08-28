@@ -1,5 +1,6 @@
 /**
- * Quick-stacking into nearby containers, and sorting the one you have open.
+ * Handling items in bulk: quick-stacking, sorting, locked slots, a trash target, and opening a
+ * container item where it sits.
  *
  * <p>Marked {@link org.jspecify.annotations.NullMarked}: every type here is non-null unless it
  * carries {@link org.jspecify.annotations.Nullable}. Minecraft itself is null-marked, so matching

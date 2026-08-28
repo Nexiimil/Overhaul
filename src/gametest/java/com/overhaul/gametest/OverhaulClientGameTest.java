@@ -6,6 +6,10 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import com.overhaul.module.backpack.BackpackItem;
 import com.overhaul.module.inventory.FillOrder;
+import com.overhaul.module.inventory.OpenCarriedPayload;
+import com.overhaul.module.inventory.SlotLocks;
+import com.overhaul.module.inventory.ToggleSlotLockPayload;
+import com.overhaul.module.inventory.TrashPayload;
 import com.overhaul.module.inventory.QuickStackPayload;
 import com.overhaul.module.inventory.SortMode;
 import com.overhaul.module.inventory.SortPayload;
@@ -16,7 +20,9 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestServerConnection;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.fabricmc.fabric.api.client.gametest.v1.world.TestWorldSave;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
@@ -38,6 +44,7 @@ import net.minecraft.world.item.crafting.CraftingInput;
 import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeType;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.world.Container;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.MoonPhase;
@@ -68,6 +75,9 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 			checkOverburdenedSlowsYouDown(context, singleplayer);
 			checkQuickStackFollowsWhatIsAlreadyThere(context, singleplayer);
 			checkSortObeysBothToggles(context, singleplayer);
+			checkLockedSlotsAreLeftAlone(context, singleplayer);
+			checkTrashVoidsAndGivesBack(context, singleplayer);
+			checkShulkerBoxOpensWhereItSits(context, singleplayer);
 			checkMoonBendsWithoutMovingTheClock(context, singleplayer);
 			checkDifficultyCeilingIsDerivedNotAssumed(singleplayer);
 			bendTheMoonAndLeaveIt(context, singleplayer, rotated, held);
@@ -583,6 +593,197 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 		});
 
 		singleplayer.getServer().runOnServer(server -> onlyPlayer(server).getInventory().clearContent());
+	}
+
+	/**
+	 * Locks one slot and checks both bulk operations step over it. The sort assertion is the more
+	 * telling of the two: the locked slot is the first of the run, so a sort that merely skipped it
+	 * when collecting would still overwrite it when writing back.
+	 */
+	private static void checkLockedSlotsAreLeftAlone(ClientGameTestContext context,
+			TestSingleplayerContext singleplayer) {
+		AtomicReference<BlockPos> origin = new AtomicReference<>();
+
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			BlockPos base = player.blockPosition();
+			origin.set(base);
+
+			placeChest(player.level(), base.offset(3, 0, 0),
+					new ItemStack(item("minecraft:cobblestone")), new ItemStack(item("minecraft:dirt")));
+
+			Inventory inventory = player.getInventory();
+			inventory.clearContent();
+			inventory.setItem(9, new ItemStack(item("minecraft:cobblestone"), 32));
+			inventory.setItem(10, new ItemStack(item("minecraft:dirt"), 32));
+		});
+
+		context.runOnClient(client -> ClientPlayNetworking.send(new ToggleSlotLockPayload(9)));
+		singleplayer.getConnection().waitForServerboundPackets();
+		context.waitTicks(2);
+
+		singleplayer.getServer().runOnServer(server -> {
+			if (!SlotLocks.isLocked(onlyPlayer(server), 9)) {
+				throw new AssertionError("Slot 9 should be locked after the toggle");
+			}
+		});
+
+		// The quick-stack cooldown is ten ticks and the sort test just before this one does not
+		// stack, but the check before that does; wait past it rather than racing.
+		context.waitTicks(15);
+		context.runOnClient(client -> ClientPlayNetworking.send(new QuickStackPayload(false)));
+		singleplayer.getConnection().waitForServerboundPackets();
+		context.waitTicks(2);
+
+		singleplayer.getServer().runOnServer(server -> {
+			Inventory inventory = onlyPlayer(server).getInventory();
+			expect(inventory.getItem(9), "minecraft:cobblestone", 32, "the locked slot after a quick-stack");
+
+			if (!inventory.getItem(10).isEmpty()) {
+				throw new AssertionError("The unlocked dirt should still have left the inventory");
+			}
+		});
+
+		singleplayer.getServer().runOnServer(server ->
+				onlyPlayer(server).getInventory().setItem(11, new ItemStack(item("minecraft:diamond"))));
+
+		context.runOnClient(client ->
+				ClientPlayNetworking.send(new SortPayload(SortMode.ALPHABETICAL, FillOrder.HORIZONTAL, true)));
+		singleplayer.getConnection().waitForServerboundPackets();
+		context.waitTicks(2);
+
+		singleplayer.getServer().runOnServer(server -> {
+			Inventory inventory = onlyPlayer(server).getInventory();
+
+			// Slot 9 is the first slot of the sorted run, so an unlocked sort would have put the
+			// diamond there. It goes to the next slot instead and the cobblestone stays put.
+			expect(inventory.getItem(9), "minecraft:cobblestone", 32, "the locked slot after a sort");
+			expect(inventory.getItem(10), "minecraft:diamond", 1, "the first slot the sort was allowed to use");
+		});
+
+		lockScreenshot(context, singleplayer);
+
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			SlotLocks.toggle(player, 9);
+
+			if (SlotLocks.isLocked(player, 9)) {
+				throw new AssertionError("Toggling a locked slot should unlock it");
+			}
+
+			player.getInventory().clearContent();
+		});
+	}
+
+	/** Opens the inventory with a slot locked so the mark it draws can be looked at. */
+	private static void lockScreenshot(ClientGameTestContext context, TestSingleplayerContext singleplayer) {
+		singleplayer.getConnection().waitForClientboundPackets();
+
+		context.setScreen(() -> {
+			LocalPlayer player = Minecraft.getInstance().player;
+
+			if (player == null) {
+				throw new AssertionError("No client player to open an inventory for");
+			}
+
+			return new InventoryScreen(player);
+		});
+
+		context.waitTicks(5);
+		context.takeScreenshot("overhaul-locked-slot");
+		context.setScreen(() -> null);
+		context.waitTicks(2);
+	}
+
+	/**
+	 * Destroys a stack off the cursor and takes it back again. The undo is the reason the button is
+	 * safe to have at all, so it is worth an assertion rather than a comment.
+	 */
+	private static void checkTrashVoidsAndGivesBack(ClientGameTestContext context,
+			TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			player.getInventory().clearContent();
+			player.containerMenu.setCarried(new ItemStack(item("minecraft:diamond_pickaxe")));
+		});
+
+		context.runOnClient(client -> ClientPlayNetworking.send(TrashPayload.INSTANCE));
+		singleplayer.getConnection().waitForServerboundPackets();
+		context.waitTicks(2);
+
+		singleplayer.getServer().runOnServer(server -> {
+			if (!onlyPlayer(server).containerMenu.getCarried().isEmpty()) {
+				throw new AssertionError("The trash should have taken the held pickaxe");
+			}
+		});
+
+		context.runOnClient(client -> ClientPlayNetworking.send(TrashPayload.INSTANCE));
+		singleplayer.getConnection().waitForServerboundPackets();
+		context.waitTicks(2);
+
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			expect(player.containerMenu.getCarried(), "minecraft:diamond_pickaxe", 1, "the cursor after an undo");
+			player.containerMenu.setCarried(ItemStack.EMPTY);
+		});
+	}
+
+	/**
+	 * Opens a shulker box sitting in the inventory and checks it is the real thing: the right
+	 * number of slots, holding what the item held, and writing back to the item afterwards.
+	 */
+	private static void checkShulkerBoxOpensWhereItSits(ClientGameTestContext context,
+			TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			player.getInventory().clearContent();
+
+			ItemStack box = new ItemStack(item("minecraft:shulker_box"));
+			box.set(DataComponents.CONTAINER,
+					ItemContainerContents.fromItems(List.of(new ItemStack(item("minecraft:emerald"), 5))));
+			player.getInventory().setItem(9, box);
+		});
+
+		context.runOnClient(client -> ClientPlayNetworking.send(new OpenCarriedPayload(9)));
+		singleplayer.getConnection().waitForServerboundPackets();
+		singleplayer.getConnection().waitForClientboundPackets();
+		context.waitForScreen(AbstractContainerScreen.class);
+
+		context.runOnClient(client -> {
+			if (client.player == null) {
+				throw new AssertionError("No client player while the shulker box screen was open");
+			}
+
+			int slots = client.player.containerMenu.slots.size();
+
+			if (slots != 27 + 36) {
+				throw new AssertionError("A shulker box should show 27 slots, menu had " + (slots - 36));
+			}
+		});
+
+		context.takeScreenshot("overhaul-shulker-open");
+
+		// Put something into an empty slot through the open menu, then close it and read the item
+		// back: this is what proves the screen writes to the stack rather than to a copy of it.
+		singleplayer.getServer().runOnServer(server ->
+				onlyPlayer(server).containerMenu.getSlot(1).set(new ItemStack(item("minecraft:diamond"), 2)));
+
+		context.setScreen(() -> null);
+		context.waitTicks(5);
+
+		singleplayer.getServer().runOnServer(server -> {
+			ItemStack box = onlyPlayer(server).getInventory().getItem(9);
+			expect(box, "minecraft:shulker_box", 1, "the slot the shulker box was opened from");
+
+			List<ItemStack> contents = box.getOrDefault(DataComponents.CONTAINER, ItemContainerContents.EMPTY)
+					.nonEmptyItemCopyStream().toList();
+
+			if (contents.size() != 2) {
+				throw new AssertionError("The shulker box should have kept both stacks, had " + contents.size());
+			}
+
+			onlyPlayer(server).getInventory().clearContent();
+		});
 	}
 
 	private static void placeChest(ServerLevel level, BlockPos pos, ItemStack... contents) {

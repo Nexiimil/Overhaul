@@ -3,10 +3,14 @@ package com.overhaul.module.inventory;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.IntPredicate;
 
+import com.overhaul.core.CarriedContainer;
 import com.overhaul.core.OverhaulModule;
 import com.overhaul.core.config.ConfigManager;
+import com.overhaul.module.backpack.BackpackItem;
 
+import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
@@ -15,28 +19,37 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.Container;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.ChestMenu;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.ShulkerBoxBlock;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Quick-stacking into the containers around you, and sorting the one in front of you.
+ * Handling items in bulk: quick-stacking into the containers around you, sorting the one in front
+ * of you, marking slots to be left alone, throwing something away, and opening a container item
+ * where it sits rather than placing it down first.
  *
- * <p>Both halves are driven from buttons the client draws on any nine-wide container screen, plus
- * a key for quick-stacking without opening anything. What each button does is decided here rather
- * than on the client: the client says "quick-stack from my inventory" and the server works out
- * what that means, so nothing a modified client sends can reach a container the player is not
- * standing at.
+ * <p>All of it is driven from the client — buttons on any nine-wide container screen, and keys for
+ * the rest — and none of it is decided there. The client says "quick-stack from my inventory" or
+ * "lock the slot I am pointing at"; the server works out what that means against its own record of
+ * what the player has open and where they are standing, so nothing a modified client sends can
+ * reach a container the player is not at or a slot they do not own.
  */
 public class InventoryModule implements OverhaulModule {
 	private static @Nullable InventoryConfig config;
 
 	/**
 	 * Last tick each player quick-stacked on, so a client holding the key down cannot make the
-	 * server rescan its surroundings sixty times a second. Sorting needs no equivalent: it touches
-	 * one container the player already has open.
+	 * server rescan its surroundings sixty times a second. Nothing else here needs an equivalent:
+	 * the rest touch one container the player already has open, or one slot.
 	 */
 	private final Map<UUID, Long> lastQuickStack = new HashMap<>();
+
+	private final Trash trash = new Trash();
 
 	@Override
 	public String id() {
@@ -54,9 +67,18 @@ public class InventoryModule implements OverhaulModule {
 	}
 
 	@Override
+	public void registerContent() {
+		SlotLocks.init();
+	}
+
+	@Override
 	public void registerBehaviour() {
 		PayloadTypeRegistry.serverboundPlay().register(QuickStackPayload.TYPE, QuickStackPayload.STREAM_CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(SortPayload.TYPE, SortPayload.STREAM_CODEC);
+		PayloadTypeRegistry.serverboundPlay().register(TrashPayload.TYPE, TrashPayload.STREAM_CODEC);
+		PayloadTypeRegistry.serverboundPlay()
+				.register(ToggleSlotLockPayload.TYPE, ToggleSlotLockPayload.STREAM_CODEC);
+		PayloadTypeRegistry.serverboundPlay().register(OpenCarriedPayload.TYPE, OpenCarriedPayload.STREAM_CODEC);
 		PayloadTypeRegistry.clientboundPlay()
 				.register(InventorySettingsPayload.TYPE, InventorySettingsPayload.STREAM_CODEC);
 
@@ -64,10 +86,20 @@ public class InventoryModule implements OverhaulModule {
 				(payload, context) -> onQuickStack(payload, context.player()));
 		ServerPlayNetworking.registerGlobalReceiver(SortPayload.TYPE,
 				(payload, context) -> onSort(payload, context.player()));
+		ServerPlayNetworking.registerGlobalReceiver(TrashPayload.TYPE,
+				(payload, context) -> onTrash(context.player()));
+		ServerPlayNetworking.registerGlobalReceiver(ToggleSlotLockPayload.TYPE,
+				(payload, context) -> onToggleSlotLock(payload, context.player()));
+		ServerPlayNetworking.registerGlobalReceiver(OpenCarriedPayload.TYPE,
+				(payload, context) -> onOpenCarried(payload, context.player()));
+
+		registerShulkerUse();
 
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> sendSettings(handler.getPlayer()));
-		ServerPlayConnectionEvents.DISCONNECT.register(
-				(handler, server) -> lastQuickStack.remove(handler.getPlayer().getUUID()));
+		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+			lastQuickStack.remove(handler.getPlayer().getUUID());
+			trash.forget(handler.getPlayer());
+		});
 	}
 
 	private void sendSettings(ServerPlayer player) {
@@ -82,6 +114,8 @@ public class InventoryModule implements OverhaulModule {
 		ServerPlayNetworking.send(player, new InventorySettingsPayload(
 				buttons && settings.quickStackEnabled,
 				buttons && settings.sortEnabled,
+				buttons && settings.trashEnabled,
+				settings.lockSlotsEnabled,
 				buttons && settings.buttons.inPlayerInventory));
 	}
 
@@ -95,6 +129,7 @@ public class InventoryModule implements OverhaulModule {
 		}
 
 		Container source;
+		IntPredicate skip;
 		int from;
 		int to;
 
@@ -107,10 +142,12 @@ public class InventoryModule implements OverhaulModule {
 			}
 
 			source = menu.getContainer();
+			skip = SlotLocks.NONE;
 			from = 0;
 			to = source.getContainerSize();
 		} else {
 			source = player.getInventory();
+			skip = SlotLocks.lockedIn(player);
 
 			// Never the hotbar. What is on it was put there on purpose, and a quick-stack that
 			// emptied it would take the player's tools along with the cobblestone.
@@ -118,7 +155,7 @@ public class InventoryModule implements OverhaulModule {
 			to = Inventory.INVENTORY_SIZE;
 		}
 
-		int moved = QuickStack.run(player, source, from, to, settings);
+		int moved = QuickStack.run(player, source, from, to, skip, settings);
 		player.containerMenu.broadcastFullState();
 		report(player, moved);
 	}
@@ -146,8 +183,7 @@ public class InventoryModule implements OverhaulModule {
 		}
 
 		player.sendSystemMessage(Component.translatable("message.overhaul.quickstack.moved", moved), true);
-		player.level().playSound(null, player.blockPosition(), SoundEvents.BUNDLE_INSERT,
-				SoundSource.PLAYERS, 0.7F, 1.2F);
+		click(player, 1.2F);
 	}
 
 	// Sorting -------------------------------------------------------------------------------------
@@ -160,20 +196,115 @@ public class InventoryModule implements OverhaulModule {
 		}
 
 		if (payload.playerInventory()) {
-			// The three main rows only. The hotbar is the one part of an inventory that is arranged
-			// deliberately — a tool per key, in the order the player reaches for them — so sorting
-			// it is destructive in a way that sorting a chest is not.
+			// The three main rows only, and not the slots the player has locked.
 			ContainerSort.sort(player.getInventory(), Inventory.SELECTION_SIZE, Inventory.INVENTORY_SIZE,
-					payload.mode(), payload.order());
+					payload.mode(), payload.order(), SlotLocks.lockedIn(player));
 		} else if (player.containerMenu instanceof ChestMenu menu) {
 			Container container = menu.getContainer();
-			ContainerSort.sort(container, 0, container.getContainerSize(), payload.mode(), payload.order());
+			ContainerSort.sort(container, 0, container.getContainerSize(),
+					payload.mode(), payload.order(), SlotLocks.NONE);
 		} else {
 			return;
 		}
 
 		player.containerMenu.broadcastFullState();
+		click(player, 1.6F);
+	}
+
+	// Locked slots --------------------------------------------------------------------------------
+
+	private static void onToggleSlotLock(ToggleSlotLockPayload payload, ServerPlayer player) {
+		InventoryConfig settings = config;
+
+		if (settings == null || !settings.lockSlotsEnabled || !SlotLocks.lockable(payload.slot())) {
+			return;
+		}
+
+		// The attachment syncs itself back to this player, so flipping the bit is the whole of the
+		// reply; the client redraws from what it is sent rather than from what it guessed.
+		click(player, SlotLocks.toggle(player, payload.slot()) ? 1.8F : 1.0F);
+	}
+
+	// Trash ---------------------------------------------------------------------------------------
+
+	private void onTrash(ServerPlayer player) {
+		InventoryConfig settings = config;
+
+		if (settings == null || !settings.trashEnabled) {
+			return;
+		}
+
+		Component message = trash.press(player);
+
+		if (message == null) {
+			return;
+		}
+
+		player.containerMenu.broadcastFullState();
+		player.sendSystemMessage(message, true);
+		click(player, 0.8F);
+	}
+
+	// Opening a container item in place -------------------------------------------------------------
+
+	/**
+	 * Using a shulker box in the air opens it. Placement is untouched: that goes through a
+	 * different interaction, so aiming at a block still puts the box down.
+	 */
+	private void registerShulkerUse() {
+		UseItemCallback.EVENT.register((player, level, hand) -> {
+			InventoryConfig settings = config;
+			ItemStack held = player.getItemInHand(hand);
+
+			if (settings == null || !settings.openShulkerBoxes || !isShulkerBox(held)) {
+				return InteractionResult.PASS;
+			}
+
+			if (level.isClientSide()) {
+				return InteractionResult.SUCCESS;
+			}
+
+			openShulkerBox(player, held);
+			return InteractionResult.CONSUME;
+		});
+	}
+
+	private static void onOpenCarried(OpenCarriedPayload payload, ServerPlayer player) {
+		InventoryConfig settings = config;
+
+		if (settings == null) {
+			return;
+		}
+
+		int slot = payload.slot();
+
+		if (slot < 0 || slot >= Inventory.INVENTORY_SIZE) {
+			return;
+		}
+
+		ItemStack stack = player.getInventory().getItem(slot);
+
+		// A backpack already knows how to open itself, and does so whether or not this module is
+		// the one asking; only the shulker box is this module's own addition.
+		if (stack.getItem() instanceof BackpackItem) {
+			BackpackItem.open(player, stack);
+		} else if (settings.openShulkerBoxes && isShulkerBox(stack)) {
+			openShulkerBox(player, stack);
+		}
+	}
+
+	private static void openShulkerBox(Player player, ItemStack stack) {
+		// Three rows, and no shulker box inside a shulker box — the same rule the placed block
+		// enforces, so opening one in place behaves exactly like opening the block would.
+		CarriedContainer.open(player, stack, 3, held -> !isShulkerBox(held));
+	}
+
+	private static boolean isShulkerBox(ItemStack stack) {
+		return stack.getItem() instanceof BlockItem item && item.getBlock() instanceof ShulkerBoxBlock;
+	}
+
+	private static void click(ServerPlayer player, float pitch) {
 		player.level().playSound(null, player.blockPosition(), SoundEvents.BUNDLE_INSERT,
-				SoundSource.PLAYERS, 0.5F, 1.6F);
+				SoundSource.PLAYERS, 0.5F, pitch);
 	}
 }

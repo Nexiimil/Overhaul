@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.IntPredicate;
 
 import com.overhaul.module.backpack.BackpackItem;
 
@@ -46,8 +47,10 @@ final class QuickStack {
 	 *
 	 * @param from first source slot, inclusive
 	 * @param to last source slot, exclusive
+	 * @param skip slots to leave exactly as they are
 	 */
-	static int run(ServerPlayer player, Container source, int from, int to, InventoryConfig config) {
+	static int run(ServerPlayer player, Container source, int from, int to, IntPredicate skip,
+			InventoryConfig config) {
 		ServerLevel level = player.level();
 		double radius = Math.clamp(config.radius, 0.0, MAX_RADIUS);
 		List<Container> targets = new ArrayList<>(
@@ -67,7 +70,7 @@ final class QuickStack {
 		int end = Math.min(to, source.getContainerSize());
 
 		for (int slot = Math.max(0, from); slot < end; slot++) {
-			if (!movable(source.getItem(slot), config)) {
+			if (skip.test(slot) || !movable(source.getItem(slot), config)) {
 				continue;
 			}
 

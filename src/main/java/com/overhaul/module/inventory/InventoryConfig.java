@@ -12,11 +12,24 @@ import java.util.List;
 public class InventoryConfig {
 	public String _comment = "Quick-stacking sends a stack to a nearby container that already holds "
 			+ "that item. List entries are ids, or tags written with a leading '#'. Sorting works on "
-			+ "any container you have open, including your own inventory.";
+			+ "any container you have open, including your own inventory. Neither ever touches your "
+			+ "hotbar or a slot you have locked.";
 
 	public boolean quickStackEnabled = true;
 
 	public boolean sortEnabled = true;
+
+	/** Whether a key can mark one of your own slots to be left out of sorts and quick-stacks. */
+	public boolean lockSlotsEnabled = true;
+
+	/** Whether the trash target appears. It voids the stack on your cursor, with one step of undo. */
+	public boolean trashEnabled = true;
+
+	/**
+	 * Whether a shulker box opens where it sits instead of having to be placed down first. Applies
+	 * to using one in your hand and to the open key in an inventory screen.
+	 */
+	public boolean openShulkerBoxes = true;
 
 	/** How far a container can be and still be quick-stacked into, measured from the player. */
 	public double radius = 5.0;

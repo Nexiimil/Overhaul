@@ -1,5 +1,5 @@
 /**
- * The buttons that drive quick-stacking and sorting, and the preference behind them.
+ * The buttons and keys that drive the inventory module, and the preference behind the sort.
  *
  * <p>Marked {@link org.jspecify.annotations.NullMarked}: every type here is non-null unless it
  * carries {@link org.jspecify.annotations.Nullable}. Minecraft itself is null-marked, so matching

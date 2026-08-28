@@ -1,6 +1,7 @@
 package com.overhaul.client;
 
 import com.overhaul.client.inventory.ContainerButtons;
+import com.overhaul.client.inventory.SlotKeys;
 import com.overhaul.core.ModuleManager;
 import com.overhaul.core.MoonLock;
 import com.overhaul.core.MoonLockPayload;
@@ -26,12 +27,18 @@ public class OverhaulClient implements ClientModInitializer {
 	private static final KeyMapping QUICK_STACK =
 			new KeyMapping("key.overhaul.quick_stack", GLFW.GLFW_KEY_V, CATEGORY);
 
+	private static final KeyMapping TOGGLE_SLOT_LOCK =
+			new KeyMapping("key.overhaul.toggle_slot_lock", GLFW.GLFW_KEY_L, CATEGORY);
+
+	private static final KeyMapping OPEN_CARRIED =
+			new KeyMapping("key.overhaul.open_carried", GLFW.GLFW_KEY_C, CATEGORY);
+
 	@Override
 	public void onInitializeClient() {
 		ModuleManager.initClient();
 		registerMoonLock();
 		registerBackpackKey();
-		registerQuickStack();
+		registerInventory();
 	}
 
 	private static void registerBackpackKey() {
@@ -51,16 +58,21 @@ public class OverhaulClient implements ClientModInitializer {
 	}
 
 	/**
-	 * The key quick-stacks from the inventory; the buttons in container screens cover everything
-	 * else. Both are only ever a request — the server decides what a quick-stack reaches.
+	 * One key quick-stacks from the inventory without opening anything; the other two act on the
+	 * slot the cursor is over inside a container screen. All of them are only ever a request — the
+	 * server decides what each one actually reaches.
 	 */
-	private static void registerQuickStack() {
+	private static void registerInventory() {
 		if (!ModuleManager.isEnabled("inventory")) {
 			return;
 		}
 
 		ContainerButtons.register();
+		SlotKeys.register(TOGGLE_SLOT_LOCK, OPEN_CARRIED);
+
 		KeyMappingHelper.registerKeyMapping(QUICK_STACK);
+		KeyMappingHelper.registerKeyMapping(TOGGLE_SLOT_LOCK);
+		KeyMappingHelper.registerKeyMapping(OPEN_CARRIED);
 
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			while (QUICK_STACK.consumeClick()) {

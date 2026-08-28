@@ -16,7 +16,8 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
  * client connecting to a server without the mod never hears from this at all, which is the same
  * outcome by default.
  */
-public record InventorySettingsPayload(boolean quickStack, boolean sort, boolean playerInventory)
+public record InventorySettingsPayload(boolean quickStack, boolean sort, boolean trash,
+		boolean lockSlots, boolean playerInventory)
 		implements CustomPacketPayload {
 
 	public static final CustomPacketPayload.Type<InventorySettingsPayload> TYPE =
@@ -26,6 +27,8 @@ public record InventorySettingsPayload(boolean quickStack, boolean sort, boolean
 			StreamCodec.composite(
 					ByteBufCodecs.BOOL, InventorySettingsPayload::quickStack,
 					ByteBufCodecs.BOOL, InventorySettingsPayload::sort,
+					ByteBufCodecs.BOOL, InventorySettingsPayload::trash,
+					ByteBufCodecs.BOOL, InventorySettingsPayload::lockSlots,
 					ByteBufCodecs.BOOL, InventorySettingsPayload::playerInventory,
 					InventorySettingsPayload::new);
 

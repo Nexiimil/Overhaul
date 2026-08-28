@@ -3,12 +3,12 @@ package com.overhaul.client.inventory;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.overhaul.client.mixin.ContainerScreenAccess;
 import com.overhaul.module.inventory.FillOrder;
 import com.overhaul.module.inventory.QuickStackPayload;
 import com.overhaul.module.inventory.InventorySettingsPayload;
 import com.overhaul.module.inventory.SortMode;
 import com.overhaul.module.inventory.SortPayload;
+import com.overhaul.module.inventory.TrashPayload;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -21,7 +21,6 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.inventory.ChestMenu;
 
 /**
  * Draws the sort and quick-stack buttons alongside any nine-wide container screen.
@@ -41,6 +40,7 @@ public final class ContainerButtons {
 
 	private static boolean quickStack;
 	private static boolean sort;
+	private static boolean trash;
 	private static boolean playerInventory;
 
 	private ContainerButtons() {
@@ -53,7 +53,7 @@ public final class ContainerButtons {
 		// Cleared on disconnect so buttons from one server do not linger into a single player
 		// world where the module is switched off.
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> apply(
-				new InventorySettingsPayload(false, false, false)));
+				new InventorySettingsPayload(false, false, false, false, false)));
 
 		ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> addTo(screen));
 	}
@@ -61,6 +61,7 @@ public final class ContainerButtons {
 	private static void apply(InventorySettingsPayload payload) {
 		quickStack = payload.quickStack();
 		sort = payload.sort();
+		trash = payload.trash();
 		playerInventory = payload.playerInventory();
 	}
 
@@ -69,16 +70,17 @@ public final class ContainerButtons {
 			return;
 		}
 
-		boolean ownInventory = screen instanceof InventoryScreen;
-
-		// Anything else with a chest menu is a chest, a barrel, a shulker box or a backpack. A
-		// furnace or a brewing stand has its own menu type and its own slot rules, and is left
-		// alone rather than being sorted into a state it would refuse from a player.
-		if (ownInventory ? !playerInventory : !(container.getMenu() instanceof ChestMenu)) {
+		if (!InventoryScreens.handles(screen)) {
 			return;
 		}
 
-		List<AbstractWidget> buttons = new ArrayList<>(3);
+		boolean ownInventory = screen instanceof InventoryScreen;
+
+		if (ownInventory && !playerInventory) {
+			return;
+		}
+
+		List<AbstractWidget> buttons = new ArrayList<>(4);
 
 		if (sort) {
 			buttons.add(sortButton(ownInventory, true));
@@ -90,6 +92,14 @@ public final class ContainerButtons {
 							press -> ClientPlayNetworking.send(new QuickStackPayload(!ownInventory)))
 					.size(WIDTH, HEIGHT)
 					.tooltip(Tooltip.create(Component.translatable("tooltip.overhaul.quickstack")))
+					.build());
+		}
+
+		if (trash) {
+			buttons.add(Button.builder(Component.translatable("button.overhaul.trash"),
+							press -> ClientPlayNetworking.send(TrashPayload.INSTANCE))
+					.size(WIDTH, HEIGHT)
+					.tooltip(Tooltip.create(Component.translatable("tooltip.overhaul.trash")))
 					.build());
 		}
 
@@ -136,12 +146,21 @@ public final class ContainerButtons {
 				: "button.overhaul.fill.horizontal");
 	}
 
-	/** Stacks the buttons down the right of the panel, or its left if the window is too narrow. */
+	/**
+	 * Stacks the buttons up from the bottom right of the panel, or its bottom left if the window is
+	 * too narrow to fit them beside it.
+	 *
+	 * <p>Bottom rather than top because the top right of the screen is where the game draws its
+	 * toasts. Anchored there, an advancement or a recipe unlock sits on top of the buttons for the
+	 * few seconds after you pick something up — which is exactly when an inventory screen is open.
+	 */
 	private static void place(AbstractContainerScreen<?> screen, List<AbstractWidget> buttons) {
-		ContainerScreenAccess panel = (ContainerScreenAccess) screen;
-		int right = panel.overhaul$leftPos() + panel.overhaul$imageWidth() + GAP;
-		int x = right + WIDTH <= screen.width ? right : panel.overhaul$leftPos() - WIDTH - GAP;
-		int y = panel.overhaul$topPos();
+		int left = InventoryScreens.left(screen);
+		int right = left + InventoryScreens.panelWidth(screen) + GAP;
+		int x = right + WIDTH <= screen.width ? right : left - WIDTH - GAP;
+
+		int column = buttons.size() * HEIGHT + (buttons.size() - 1) * GAP;
+		int y = InventoryScreens.top(screen) + InventoryScreens.panelHeight(screen) - column;
 
 		for (AbstractWidget button : buttons) {
 			button.setX(x);
