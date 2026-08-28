@@ -1,6 +1,7 @@
 package com.overhaul;
 
 import com.overhaul.core.ModuleManager;
+import com.overhaul.core.config.ConfigManager;
 import com.overhaul.core.MoonLock;
 import com.overhaul.core.OverhaulCommands;
 import com.overhaul.core.data.RuntimeDataPack;
@@ -25,6 +26,11 @@ public class Overhaul implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
+		// Renames this mod has made to its own config, applied before anything reads a module id.
+		// A fact about the mod's history rather than about any one module, so it is stated here.
+		ConfigManager.renameModule("quickstack", "inventory");
+		ConfigManager.renameFile("quickstack-client", "inventory-client");
+
 		ModuleManager.register(new TastyModule());
 		ModuleManager.register(new BackpackModule());
 		ModuleManager.register(new MagicalModule());

@@ -111,6 +111,57 @@ public final class ConfigManager {
 		}
 	}
 
+	/**
+	 * Carries a config file across a rename, so renaming something in the mod does not quietly
+	 * reset whatever the user had configured under the old name.
+	 *
+	 * <p>If a file already exists under the new name the old one is moved aside rather than
+	 * dropped on top of it: the new file is the one in use, and silently replacing it would undo
+	 * settings someone had already made. Nothing is ever deleted.
+	 */
+	public static void renameFile(String oldName, String newName) {
+		Path old = root().resolve(oldName + ".json");
+
+		if (!Files.isRegularFile(old)) {
+			return;
+		}
+
+		Path renamed = root().resolve(newName + ".json");
+		boolean taken = Files.exists(renamed);
+		Path target = taken ? root().resolve(oldName + ".json.replaced") : renamed;
+
+		try {
+			Files.deleteIfExists(target);
+			Files.move(old, target);
+
+			if (taken) {
+				Overhaul.LOGGER.info("Config {} was renamed to {}, which already existed; the old file is now {}",
+						old.getFileName(), renamed.getFileName(), target.getFileName());
+			} else {
+				Overhaul.LOGGER.info("Renamed config {} to {}", old.getFileName(), renamed.getFileName());
+			}
+		} catch (IOException e) {
+			Overhaul.LOGGER.error("Could not rename config {} to {}", old, target, e);
+		}
+	}
+
+	/**
+	 * The same for a module, whose id also names its switch in the master config.
+	 *
+	 * <p>Must run before the module list is walked, because that fills in a default for every id it
+	 * knows about — and once the new id has a default there is no way to tell it apart from a
+	 * setting the user made, so the old value could not safely be carried over.
+	 */
+	public static void renameModule(String oldId, String newId) {
+		renameFile(oldId, newId);
+
+		Boolean enabled = master().modules.remove(oldId);
+
+		if (enabled != null) {
+			master().modules.putIfAbsent(newId, enabled);
+		}
+	}
+
 	private static void backup(Path file) {
 		Path target = file.resolveSibling(file.getFileName() + ".broken");
 
