@@ -46,6 +46,10 @@ public class MagicalModule implements OverhaulModule {
 		return config != null && config.anvil.removePriorWorkPenalty;
 	}
 
+	public static boolean keepLapis() {
+		return config != null && config.enchanting.keepLapis && ModuleManager.isEnabled("magical");
+	}
+
 	public static boolean bookshelvesEnabled() {
 		return config != null && config.bookshelves.enabled && ModuleManager.isEnabled("magical");
 	}
@@ -99,14 +103,22 @@ public class MagicalModule implements OverhaulModule {
 
 	@Override
 	public void registerContent() {
+		// Touching these registers their attachment types before the first chunk loads.
 		if (config.bookshelves.enabled) {
-			// Touching the class registers the attachment type before the first chunk loads.
 			Bookshelves.init();
+		}
+
+		if (config.enchanting.keepLapis) {
+			EnchantingLapis.init();
 		}
 	}
 
 	@Override
 	public void registerBehaviour() {
+		if (config.enchanting.keepLapis) {
+			registerLapisDrop();
+		}
+
 		if (!config.bookshelves.enabled) {
 			return;
 		}
@@ -128,6 +140,21 @@ public class MagicalModule implements OverhaulModule {
 
 			for (ItemStack book : Bookshelves.clear(level, pos)) {
 				Containers.dropItemStack(level, pos.getX(), pos.getY(), pos.getZ(), book);
+			}
+		});
+	}
+
+	/**
+	 * Gives back the lapis a table was holding when it is broken. Anything that destroys the table
+	 * without a player breaking it — an explosion, say — takes the lapis with it, which is the same
+	 * bargain as everything else that was standing there.
+	 */
+	private static void registerLapisDrop() {
+		PlayerBlockBreakEvents.AFTER.register((level, player, pos, state, blockEntity) -> {
+			ItemStack lapis = EnchantingLapis.takeFrom(blockEntity);
+
+			if (!lapis.isEmpty()) {
+				Containers.dropItemStack(level, pos.getX(), pos.getY(), pos.getZ(), lapis);
 			}
 		});
 	}

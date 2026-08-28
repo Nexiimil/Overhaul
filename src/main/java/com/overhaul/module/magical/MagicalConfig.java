@@ -18,6 +18,7 @@ public class MagicalConfig {
 
 	public AnvilSettings anvil = new AnvilSettings();
 	public BookshelfSettings bookshelves = new BookshelfSettings();
+	public EnchantingSettings enchanting = new EnchantingSettings();
 
 	public static class AnvilSettings {
 		/** Removes the "Too Expensive!" wall at 40 levels. */
@@ -40,6 +41,14 @@ public class MagicalConfig {
 
 		/** Upper bound on the surcharge, so a fully enchanted item stays repairable in one go. */
 		public int maxExtraMaterial = 32;
+	}
+
+	public static class EnchantingSettings {
+		/**
+		 * Leaves the lapis in the enchanting table when you close it, so a table you use often is
+		 * stocked once rather than carried to and from. The item being enchanted still comes back.
+		 */
+		public boolean keepLapis = true;
 	}
 
 	public static class BookshelfSettings {

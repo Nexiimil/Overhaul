@@ -7,8 +7,9 @@
 		"AnvilMenuMixin",
 		"CreeperMixin",
 		"EnchantingTableBlockMixin",
-		"EnvironmentAttributeSystemMixin",
+		"EnchantmentMenuMixin",
 		"EndermanTakeBlockGoalMixin",
+		"EnvironmentAttributeSystemMixin",
 		"MobGoalAccess",
 		"MobTargetMixin",
 		"PackRepositoryMixin"

@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 import com.overhaul.module.backpack.BackpackItem;
+import com.overhaul.module.magical.EnchantingLapis;
 import com.overhaul.module.inventory.FillOrder;
 import com.overhaul.module.inventory.SlotLocks;
 import com.overhaul.module.inventory.ToggleSlotLockPayload;
@@ -48,6 +49,8 @@ import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.world.Container;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.level.MoonPhase;
 import net.minecraft.world.level.chunk.ChunkAccess;
 
@@ -79,6 +82,7 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 			checkLockedSlotsAreLeftAlone(context, singleplayer);
 			checkTrashVoidsAndGivesBack(context, singleplayer);
 			checkShulkerBoxOpensWhereItSits(context, singleplayer);
+			checkEnchantingTableKeepsItsLapis(singleplayer);
 			checkMoonBendsWithoutMovingTheClock(context, singleplayer);
 			checkDifficultyCeilingIsDerivedNotAssumed(singleplayer);
 			bendTheMoonAndLeaveIt(context, singleplayer, rotated, held);
@@ -836,6 +840,86 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 	private static void checkBinSurvivedTheRestart(TestSingleplayerContext reopened) {
 		reopened.getServer().runOnServer(server -> expect(TrashSlot.contents(onlyPlayer(server)),
 				"minecraft:golden_apple", 3, "the bin after the world was reopened"));
+	}
+
+	/**
+	 * Puts lapis in an enchanting table, closes it, and checks the table kept it rather than the
+	 * player getting it back — then that reopening hands it over again, and that breaking the table
+	 * gives it up rather than swallowing it.
+	 *
+	 * <p>Driven through the real menu, because what is under test is a mixin: one that failed to
+	 * apply would leave vanilla behaving exactly as it always did, which is indistinguishable from
+	 * the feature being off unless something actually opens the screen.
+	 */
+	private static void checkEnchantingTableKeepsItsLapis(TestSingleplayerContext singleplayer) {
+		AtomicReference<BlockPos> table = new AtomicReference<>();
+
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			ServerLevel level = player.level();
+			BlockPos pos = player.blockPosition().offset(0, 0, 3);
+			table.set(pos);
+
+			level.setBlockAndUpdate(pos, Blocks.ENCHANTING_TABLE.defaultBlockState());
+			player.getInventory().clearContent();
+
+			openTable(player, pos);
+			player.containerMenu.getSlot(1).set(new ItemStack(item("minecraft:lapis_lazuli"), 3));
+			player.closeContainer();
+
+			expect(EnchantingLapis.take(level, pos), "minecraft:lapis_lazuli", 3, "the table after closing it");
+
+			// take() emptied the table, so put it back the way closing the screen would have.
+			EnchantingLapis.store(level, pos, new ItemStack(item("minecraft:lapis_lazuli"), 3));
+
+			if (player.getInventory().contains(new ItemStack(item("minecraft:lapis_lazuli")))) {
+				throw new AssertionError("The lapis should have stayed in the table, not come back to the player");
+			}
+		});
+
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			openTable(player, table.get());
+
+			expect(player.containerMenu.getSlot(1).getItem(), "minecraft:lapis_lazuli", 3,
+					"the lapis slot when the table is reopened");
+
+			// Held by the menu now, so the table itself must be empty: a table that still had it
+			// would hand a second copy to the next player to open it.
+			if (!EnchantingLapis.take(player.level(), table.get()).isEmpty()) {
+				throw new AssertionError("An open table should not still be holding the lapis it handed over");
+			}
+
+			player.closeContainer();
+		});
+
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			ServerLevel level = player.level();
+			BlockPos pos = table.get();
+
+			player.gameMode.destroyBlock(pos);
+
+			List<ItemEntity> dropped = level.getEntitiesOfClass(ItemEntity.class, new AABB(pos).inflate(3.0)).stream()
+					.filter(entity -> entity.getItem().getItem() == item("minecraft:lapis_lazuli"))
+					.toList();
+
+			if (dropped.size() != 1 || dropped.getFirst().getItem().getCount() != 3) {
+				throw new AssertionError("Breaking the table should drop the 3 lapis it was holding, dropped "
+						+ dropped.size() + " stack(s)");
+			}
+
+			dropped.forEach(ItemEntity::discard);
+			player.getInventory().clearContent();
+		});
+	}
+
+	private static void openTable(ServerPlayer player, BlockPos pos) {
+		player.openMenu(player.level().getBlockState(pos).getMenuProvider(player.level(), pos));
+
+		if (!(player.containerMenu instanceof net.minecraft.world.inventory.EnchantmentMenu)) {
+			throw new AssertionError("Expected an enchanting menu, got " + player.containerMenu.getClass());
+		}
 	}
 
 	private static void placeChest(ServerLevel level, BlockPos pos, ItemStack... contents) {
