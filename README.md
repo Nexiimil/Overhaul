@@ -2,9 +2,9 @@
 
 # Overhaul
 
-### Four mods in one. None of them hardcoded.
+### Several mods in one. None of them hardcoded.
 
-*A modular Fabric mod for Minecraft **26.2** — food, backpacks, magic and mobs.*
+*A modular Fabric mod for Minecraft **26.2** — food, backpacks, magic, mobs and inventory.*
 *Switch any of it off. Retune all of it from JSON.*
 
 <br/>
@@ -95,6 +95,27 @@ builds. Anything badly wounded runs.
 
 </td>
 </tr>
+<tr>
+<td colspan="2" valign="top">
+
+### 🧰 Inventory
+
+**Quick-stacking, sorting, locked slots and a bin.**
+
+Press one key and every stack you are carrying goes to the chest that **already holds it** — not the
+nearest one, not the first with space. A chest becomes a filing destination by having something filed
+in it once, so there is nothing to set up per chest.
+
+Sort any container by name or by mod, filling rows or columns. Lock the slots you want left alone.
+Bin something into a slot that **holds the last thing you binned**, so a misclick is recoverable.
+Open a shulker box straight from your hand.
+
+No items, no blocks — buttons, two keys and a slot.
+
+**[→ Inventory Module](https://github.com/Nexiimil/Overhaul/wiki/Inventory-Module)**
+
+</td>
+</tr>
 </table>
 
 ---
@@ -133,7 +154,8 @@ config/overhaul/
 ├── tasty.json      foods, crops, meals, flavour families
 ├── backpack.json   tiers, sizes, the upgrade ladder
 ├── magical.json    anvil rules, bookshelf behaviour
-└── mob.json        factions, per-mob tuning
+├── mob.json        factions, per-mob tuning
+└── inventory.json  quick-stacking, sorting, locked slots, the bin
 ```
 
 > **Recipes are real recipes.** Every recipe in the config is a thin mirror of the vanilla recipe
