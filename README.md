@@ -2,7 +2,7 @@
 
 # Overhaul
 
-### Several mods in one. None of them hardcoded.
+### Several mods in one. None of them required.
 
 *A modular Fabric mod for Minecraft **26.2** — food, backpacks, magic, mobs and inventory.*
 *Switch any of it off. Retune all of it from JSON.*
@@ -33,7 +33,7 @@
 
 ### 🍅 Tasty
 
-**Four crops, seventeen items, six meals.**
+**New crops, new items, new meals.**
 
 Put a bowl and a handful of ingredients anywhere in a crafting grid. No fixed shape — the recipe
 reads what you gave it and builds the meal from it.
@@ -48,7 +48,7 @@ does before you make it.
 
 ### 🎒 Backpack
 
-**Six tiers, from 9 slots to 54.**
+**Tiers, varying in size**
 
 Leather, string and a chest gets you the first one. Every tier after that is a smithing upgrade — so
 the bag keeps its contents when you upgrade it.
@@ -67,7 +67,7 @@ one bigger bag the answer instead of six small ones.
 
 **Enchanted gear you keep.**
 
-*"Too Expensive!"* is gone, and so is the prior-work penalty that quietly turns every good tool into
+*"Too Expensive!"* is gone, and so is the prior-work penalty that quietly turns your ol' reliable tool into
 a consumable. Repairs cost **more material** instead, scaled to how enchanted the item is.
 
 Bookshelves start empty and hold books you put in them — so an enchanting setup is something you
@@ -102,15 +102,11 @@ builds. Anything badly wounded runs.
 
 **Quick-stacking, sorting, locked slots and a bin.**
 
-Press one key and every stack you are carrying goes to the chest that **already holds it** — not the
-nearest one, not the first with space. A chest becomes a filing destination by having something filed
-in it once, so there is nothing to set up per chest.
+Press one key and every stack you are carrying goes to the chest that **already holds it**. A chest becomes a filing destination by having something filed in it once, so there is nothing to set up per chest.
 
 Sort any container by name or by mod, filling rows or columns. Lock the slots you want left alone.
 Bin something into a slot that **holds the last thing you binned**, so a misclick is recoverable.
 Open a shulker box straight from your hand.
-
-No items, no blocks — buttons, two keys and a slot.
 
 **[→ Inventory Module](https://github.com/Nexiimil/Overhaul/wiki/Inventory-Module)**
 
@@ -120,11 +116,9 @@ No items, no blocks — buttons, two keys and a slot.
 
 ---
 
-## One rule, eleven families
+## Same rules, different families
 
-Every ingredient belongs to a family. Every family has exactly one effect. That's the whole system —
-learnable in one sitting, and it holds for modded food too, because anything unlisted falls back to
-the conventional `c:foods/*` tags.
+Every ingredient belongs to a family, each family has exactly one effect. It should hold for modded food too, because anything unlisted falls back to the conventional `c:foods/*` tags.
 
 ```mermaid
 flowchart LR
@@ -160,10 +154,10 @@ config/overhaul/
 
 > **Recipes are real recipes.** Every recipe in the config is a thin mirror of the vanilla recipe
 > JSON, and Overhaul generates a data pack from it at startup. Change a `type` from `crafting_shaped`
-> to `smelting` and you get a genuine smelting recipe — anything vanilla can express, the config can
+> to `smelting` and you get a smelting recipe — anything vanilla can express, the config can
 > express.
 
-> **Adding entries works, not just editing them.** The `foods`, `crops`, `meals`, `tiers` and
+> **Adding new entries works too!** The `foods`, `crops`, `meals`, `tiers` and
 > `teams.members` maps register whatever is in them. A pack can add its own food with its own recipe
 > and effects, and the only thing it needs from outside the config is a texture.
 
