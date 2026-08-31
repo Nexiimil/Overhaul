@@ -37,7 +37,6 @@ final class MobDefaults {
 
 		config.teams.members.putIfAbsent("ender", new ArrayList<>(List.of(
 				"minecraft:enderman",
-				"minecraft:endermite",
 				"minecraft:shulker",
 				"minecraft:phantom")));
 
