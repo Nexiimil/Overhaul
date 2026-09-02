@@ -53,6 +53,7 @@ public final class OverhaulCommands {
 
 	private static void build(CommandDispatcher<CommandSourceStack> dispatcher) {
 		LiteralArgumentBuilder<CommandSourceStack> difficulty = Commands.literal("difficulty")
+				.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
 				.executes(context -> reportDifficulty(context.getSource()))
 				.then(Commands.literal("set")
 						.then(Commands.argument("value", FloatArgumentType.floatArg(0.0F))
@@ -66,6 +67,7 @@ public final class OverhaulCommands {
 						.executes(context -> setInhabited(context.getSource(), 0L)));
 
 		LiteralArgumentBuilder<CommandSourceStack> moon = Commands.literal("moon")
+				.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
 				.executes(context -> reportMoon(context.getSource()))
 				.then(Commands.literal("reset")
 						.executes(context -> resetMoon(context.getSource())));
@@ -76,8 +78,9 @@ public final class OverhaulCommands {
 					.executes(context -> setMoon(context.getSource(), phase)));
 		}
 
+		// The requirement sits on each subtree rather than on the root, because the multiplayer
+		// module hangs /overhaul claim off the same root and that half is for everyone.
 		dispatcher.register(Commands.literal("overhaul")
-				.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
 				.then(difficulty)
 				.then(moon));
 	}

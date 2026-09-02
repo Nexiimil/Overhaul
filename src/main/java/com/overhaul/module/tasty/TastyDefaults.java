@@ -24,6 +24,7 @@ final class TastyDefaults {
 	static void fill(TastyConfig config) {
 		fillCrops(config);
 		fillFoods(config);
+		fillVanillaFoods(config);
 		fillMeals(config);
 		fillFlavours(config);
 	}
@@ -113,9 +114,37 @@ final class TastyDefaults {
 					List.of("minecraft:cooked_porkchop", "minecraft:honey_bottle", "minecraft:sugar")));
 		});
 
+		// A baked potato is already the cheapest filling meal in the game; gilding it is the
+		// obvious counterpart to the golden carrot, and gives gold nuggets a use that is not
+		// eventually a golden apple.
+		food(config, "golden_baked_potato", 7, 1.0F, entry -> {
+			entry.stackSize = 16;
+			entry.recipes.put("from_nuggets", RecipeSpec.shaped("overhaul:golden_baked_potato", 1,
+					List.of("NNN", "NPN", "NNN"),
+					Map.of("N", "minecraft:gold_nugget", "P", "minecraft:baked_potato")));
+		});
+
 		food(config, "trail_mix", 6, 0.8F, entry -> entry.recipes.put("mixing",
 				RecipeSpec.shapeless("overhaul:trail_mix", 3, List.of(
 						"minecraft:glow_berries", "minecraft:sweet_berries", "minecraft:cocoa_beans", "minecraft:wheat_seeds"))));
+	}
+
+	/**
+	 * Food this module hands to items that already existed.
+	 *
+	 * <p>A glistering melon slice has never been edible, which has always been odd for a thing made
+	 * of a melon slice and eight gold nuggets. It is a brewing ingredient, and it stays one — this
+	 * only means the leftovers are worth something.
+	 */
+	private static void fillVanillaFoods(TastyConfig config) {
+		FoodEntry glisteringMelon = new FoodEntry();
+		glisteringMelon.nutrition = 4;
+
+		// Gold makes a food rich rather than filling, the same way it does for a golden carrot:
+		// four hunger, but nine and a half saturation behind it.
+		glisteringMelon.saturationModifier = 1.2F;
+		glisteringMelon.eatSeconds = 1.6F;
+		config.vanillaFoods.putIfAbsent("minecraft:glistering_melon_slice", glisteringMelon);
 	}
 
 	private static FoodEntry food(TastyConfig config, String name, int nutrition, float saturation) {
@@ -278,6 +307,7 @@ final class TastyDefaults {
 		ingredient(config, "minecraft:beetroot", "root", "raw");
 		ingredient(config, "minecraft:baked_potato", "root", "cooked");
 		ingredient(config, "minecraft:golden_carrot", "root", "golden");
+		ingredient(config, "overhaul:golden_baked_potato", "root", "golden");
 
 		ingredient(config, "overhaul:lettuce", "leaf", "raw");
 		ingredient(config, "minecraft:kelp", "leaf", "raw");
@@ -294,6 +324,7 @@ final class TastyDefaults {
 		ingredient(config, "overhaul:trail_mix", "fruit", "cooked");
 		ingredient(config, "minecraft:golden_apple", "fruit", "golden");
 		ingredient(config, "minecraft:enchanted_golden_apple", "fruit", "golden");
+		ingredient(config, "minecraft:glistering_melon_slice", "fruit", "golden");
 
 		ingredient(config, "minecraft:sugar", "sweet", "raw");
 		ingredient(config, "minecraft:cocoa_beans", "sweet", "raw");

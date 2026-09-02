@@ -4,7 +4,7 @@
 
 ### Several mods in one. None of them required.
 
-*A modular Fabric mod for Minecraft **26.2** — food, backpacks, magic, mobs and inventory.*
+*A modular Fabric mod for Minecraft **26.2** — food, backpacks, magic, mobs, inventory and multiplayer.*
 *Switch any of it off. Retune all of it from JSON.*
 
 <br/>
@@ -73,6 +73,12 @@ a consumable. Repairs cost **more material** instead, scaled to how enchanted th
 Bookshelves start empty and hold books you put in them — so an enchanting setup is something you
 stock, not a wall you build.
 
+The anvil learns two more jobs: **bottling experience** for a known price in points, and **splitting**
+one enchantment off a book onto a blank one, so a five-enchantment book becomes five you can use.
+
+Two enchantments come with it. **Shrouded** is a carved pumpkin you can see through. **Vein Mine**
+finishes the seam — up to 32 of the same block, and only with the tool that was already right for it.
+
 **[→ Magical Module](https://github.com/Nexiimil/Overhaul/wiki/Magical-Module)**
 
 </td>
@@ -91,12 +97,15 @@ difficulty that rises in the chunks you actually live in.
 Zombies vary in speed and call for help. Skeletons open fire from 26 blocks. Endermen rearrange your
 builds. Anything badly wounded runs.
 
+Villagers follow a held **emerald**, so moving one is a walk rather than a boat. Their stock is wider
+too. And a dispenser full of wheat **feeds** what is standing in front of it.
+
 **[→ Mob Module](https://github.com/Nexiimil/Overhaul/wiki/Mob-Module)**
 
 </td>
 </tr>
 <tr>
-<td colspan="2" valign="top">
+<td width="50%" valign="top">
 
 ### 🧰 Inventory
 
@@ -109,6 +118,28 @@ Bin something into a slot that **holds the last thing you binned**, so a misclic
 Open a shulker box straight from your hand.
 
 **[→ Inventory Module](https://github.com/Nexiimil/Overhaul/wiki/Inventory-Module)**
+
+</td>
+<td width="50%" valign="top">
+
+### 🚩 Multiplayer
+
+**Land that belongs to someone.**
+
+Claims ride on **vanilla teams** — the ones you already use for name colours and friendly fire — so
+there is no second idea of who is with whom to disagree with the first.
+
+Plant a banner and the chunk is your team's. Outsiders can't build in it and can't open anything;
+allies can, minus whatever the leader has excluded. Exclusions take **tags**, so a modded door is a
+door.
+
+Players form and run their **own teams** — create, invite, kick, hand over, disband — so claims need
+an operator exactly never. Vanilla's `/team` stays op-only for everything else.
+
+**Chunk loaders** keep a chunk awake while you're away. An enchanting table's shape, in obsidian,
+nether stars and an eye of ender.
+
+**[→ Multiplayer Module](https://github.com/Nexiimil/Overhaul/wiki/Multiplayer-Module)**
 
 </td>
 </tr>
@@ -144,12 +175,13 @@ Everything lives in `config/overhaul/`, written on first launch.
 
 ```
 config/overhaul/
-├── overhaul.json   which modules are enabled
-├── tasty.json      foods, crops, meals, flavour families
-├── backpack.json   tiers, sizes, the upgrade ladder
-├── magical.json    anvil rules, bookshelf behaviour
-├── mob.json        factions, per-mob tuning
-└── inventory.json  quick-stacking, sorting, locked slots, the bin
+├── overhaul.json     which modules are enabled
+├── tasty.json        foods, crops, meals, flavour families
+├── backpack.json     tiers, sizes, the upgrade ladder
+├── magical.json      anvil rules, bookshelf behaviour, the two enchantments
+├── mob.json          factions, per-mob tuning, dispensers, villager trades
+├── inventory.json    quick-stacking, sorting, locked slots, the bin
+└── multiplayer.json  claim defaults and limits, chunk loaders
 ```
 
 > **Recipes are real recipes.** Every recipe in the config is a thin mirror of the vanilla recipe
@@ -157,8 +189,13 @@ config/overhaul/
 > to `smelting` and you get a smelting recipe — anything vanilla can express, the config can
 > express.
 
-> **Adding new entries works too!** The `foods`, `crops`, `meals`, `tiers` and
-> `teams.members` maps register whatever is in them. A pack can add its own food with its own recipe
+> **Claims are not in here.** Who owns a chunk, who leads a team and what that team allows all live
+> in the world and are set in game with `/overhaul claim` — including forming the team itself, which
+> would otherwise need an operator for every player joining one. This file only holds what a team
+> starts out with and the limits an operator sets over all of them.
+
+> **Adding new entries works too!** The `foods`, `crops`, `meals`, `tiers`,
+> `teams.members` and `villagers.addedTrades` maps register whatever is in them. A pack can add its own food with its own recipe
 > and effects, and the only thing it needs from outside the config is a texture.
 
 **[→ Configuration](https://github.com/Nexiimil/Overhaul/wiki/Configuration)** ·

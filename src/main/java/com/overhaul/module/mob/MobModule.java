@@ -9,6 +9,7 @@ import com.overhaul.Overhaul;
 import com.overhaul.core.ModuleManager;
 import com.overhaul.core.OverhaulModule;
 import com.overhaul.core.config.ConfigManager;
+import com.overhaul.core.data.DataPackBuilder;
 import com.overhaul.mixin.MobGoalAccess;
 
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
@@ -35,6 +36,7 @@ import net.minecraft.world.entity.monster.spider.Spider;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.entity.monster.skeleton.Skeleton;
+import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import org.jspecify.annotations.Nullable;
@@ -111,6 +113,11 @@ public class MobModule implements OverhaulModule {
 		if (config.hordes.enabled && config.teams.enabled) {
 			ServerTickEvents.END_SERVER_TICK.register(server -> hordes.tick(server, config));
 		}
+	}
+
+	@Override
+	public void buildRecipes(DataPackBuilder pack) {
+		VillagerTrading.build(pack, config.villagers);
 	}
 
 	// Teams --------------------------------------------------------------------------------------
@@ -414,5 +421,22 @@ public class MobModule implements OverhaulModule {
 				|| state.is(net.minecraft.tags.BlockTags.IMPERMEABLE)
 				|| state.is(net.minecraft.tags.BlockTags.WALLS)
 				|| state.is(net.minecraft.tags.BlockTags.FENCES);
+	}
+
+	// Dispensers and villagers -------------------------------------------------------------------
+
+	/**
+	 * Entry point for the dispenser mixin. Like every other one here it is called from a vanilla
+	 * class, whether or not the module is switched on, so it answers that question itself.
+	 */
+	public static boolean dispenserFed(ServerLevel level, BlockState state, BlockPos pos) {
+		return active() && DispenserFeeding.tryFeed(level, state, pos, config.dispensers);
+	}
+
+	/** Entry point for the villager mixin, for the same reason. */
+	public static void leadVillager(Villager villager, ServerLevel level) {
+		if (active()) {
+			VillagerLeading.tick(villager, level, config.villagers);
+		}
 	}
 }

@@ -5,14 +5,21 @@
 	"mixins": [
 		"AbstractSkeletonMixin",
 		"AnvilMenuMixin",
+		"BlockItemMixin",
 		"CreeperMixin",
+		"DispenserBlockMixin",
 		"EnchantingTableBlockMixin",
 		"EnchantmentMenuMixin",
+		"EndermanShroudMixin",
 		"EndermanTakeBlockGoalMixin",
 		"EnvironmentAttributeSystemMixin",
 		"MobGoalAccess",
 		"MobTargetMixin",
-		"PackRepositoryMixin"
+		"PackRepositoryMixin",
+		"ServerExplosionMixin",
+		"ServerScoreboardMixin",
+		"ThrownExperienceBottleMixin",
+		"VillagerMixin"
 	],
 	"injectors": { "defaultRequire": 1 }
 }

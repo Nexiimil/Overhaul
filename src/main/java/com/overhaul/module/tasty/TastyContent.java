@@ -98,25 +98,7 @@ public final class TastyContent {
 		Item.Properties properties = new Item.Properties().stacksTo(Math.max(1, entry.stackSize));
 
 		if (entry.edible) {
-			FoodProperties.Builder food = new FoodProperties.Builder()
-					.nutrition(entry.nutrition)
-					.saturationModifier(entry.saturationModifier);
-
-			if (entry.alwaysEdible) {
-				food.alwaysEdible();
-			}
-
-			Consumable.Builder consumable = Consumable.builder()
-					.consumeSeconds(entry.eatSeconds)
-					.animation(entry.drink ? ItemUseAnimation.DRINK : ItemUseAnimation.EAT)
-					.sound(entry.drink ? SoundEvents.GENERIC_DRINK : SoundEvents.GENERIC_EAT)
-					.hasConsumeParticles(!entry.drink);
-
-			for (ApplyStatusEffectsConsumeEffect effect : consumeEffects(entry.effects)) {
-				consumable.onConsume(effect);
-			}
-
-			properties.food(food.build(), consumable.build());
+			properties.food(foodProperties(entry), consumable(entry));
 
 			if (!entry.usingConvertsTo.isBlank()) {
 				BuiltInRegistries.ITEM.get(Identifier.parse(entry.usingConvertsTo))
@@ -125,6 +107,39 @@ public final class TastyContent {
 		}
 
 		return Reg.item(name, properties);
+	}
+
+	/**
+	 * The nutrition half of a food entry, split out because it is wanted twice: once when this
+	 * module registers an item of its own, and once when it makes something that already exists
+	 * edible. Both routes have to produce identical food data or the same numbers in the config
+	 * would mean two different things.
+	 */
+	public static FoodProperties foodProperties(FoodEntry entry) {
+		FoodProperties.Builder food = new FoodProperties.Builder()
+				.nutrition(entry.nutrition)
+				.saturationModifier(entry.saturationModifier);
+
+		if (entry.alwaysEdible) {
+			food.alwaysEdible();
+		}
+
+		return food.build();
+	}
+
+	/** The eating half: how long it takes, what it sounds like, and what it does to you. */
+	public static Consumable consumable(FoodEntry entry) {
+		Consumable.Builder consumable = Consumable.builder()
+				.consumeSeconds(entry.eatSeconds)
+				.animation(entry.drink ? ItemUseAnimation.DRINK : ItemUseAnimation.EAT)
+				.sound(entry.drink ? SoundEvents.GENERIC_DRINK : SoundEvents.GENERIC_EAT)
+				.hasConsumeParticles(!entry.drink);
+
+		for (ApplyStatusEffectsConsumeEffect effect : consumeEffects(entry.effects)) {
+			consumable.onConsume(effect);
+		}
+
+		return consumable.build();
 	}
 
 	private static void registerCrop(String name, CropEntry entry) {

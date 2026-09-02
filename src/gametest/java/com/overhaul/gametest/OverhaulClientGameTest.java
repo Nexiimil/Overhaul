@@ -52,7 +52,49 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.level.MoonPhase;
+import net.minecraft.world.level.ChunkPos;
+import com.overhaul.module.multiplayer.TeamInvites;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.server.permissions.PermissionSet;
+import net.minecraft.world.scores.PlayerTeam;
 import net.minecraft.world.level.chunk.ChunkAccess;
+import com.overhaul.module.multiplayer.Claims;
+import com.overhaul.module.multiplayer.MultiplayerContent;
+import com.overhaul.module.multiplayer.Protection;
+import com.overhaul.module.multiplayer.TeamClaims;
+import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
+import com.overhaul.module.magical.Experience;
+import com.overhaul.module.mob.MobModule;
+import net.minecraft.core.Direction;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.tags.TagKey;
+import net.minecraft.tags.VillagerTradeTags;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.entity.ai.behavior.EntityTracker;
+import net.minecraft.world.entity.ai.memory.MemoryModuleType;
+import net.minecraft.world.entity.ai.memory.WalkTarget;
+import net.minecraft.world.entity.ExperienceOrb;
+import net.minecraft.world.entity.animal.cow.Cow;
+import net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownExperienceBottle;
+import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.food.FoodProperties;
+import net.minecraft.world.inventory.AnvilMenu;
+import net.minecraft.world.inventory.ContainerLevelAccess;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.alchemy.PotionContents;
+import net.minecraft.world.item.alchemy.Potions;
+import net.minecraft.world.item.enchantment.Enchantment;
+import net.minecraft.world.item.enchantment.ItemEnchantments;
+import net.minecraft.world.item.trading.VillagerTrade;
+import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.DispenserBlock;
+import net.minecraft.world.level.block.entity.DispenserBlockEntity;
 
 /**
  * Drives a real client through the parts of Overhaul that only exist once a world is running.
@@ -83,10 +125,30 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 			checkTrashVoidsAndGivesBack(context, singleplayer);
 			checkShulkerBoxOpensWhereItSits(context, singleplayer);
 			checkEnchantingTableKeepsItsLapis(singleplayer);
+			checkNewEnchantmentsLoaded(singleplayer);
+			checkVeinMineTakesTheSeamAndStops(singleplayer);
+			checkAnvilBottlesExperience(singleplayer);
+			checkThrownBottlesGiveBackWhatTheyCost(context, singleplayer);
+			checkAnvilSplitsAnEnchantedBook(singleplayer);
+			checkGlisteringMelonIsWorthEating(singleplayer);
+			checkGoldenBakedPotatoCrafts(singleplayer);
+			checkDispenserFeedsWhatIsInFrontOfIt(singleplayer);
+			checkVillagerWalksTowardsAnEmerald(singleplayer);
+			checkAddedTradesJoinTheVanillaPools(singleplayer);
+			checkClaimsSortVisitorsFromMembers(singleplayer);
+			checkBannerClaimsTheChunk(singleplayer);
+			checkExplosionsSpareClaimedChunks(singleplayer);
+			checkChunkLoaderHoldsItsChunk(singleplayer);
+			checkChunkLoaderCrafts(singleplayer);
+			checkDeletingATeamReleasesItsLand(singleplayer);
+			checkVanillaTeamCommandIsStillOperatorOnly(singleplayer);
+			checkPlayersCanRunTheirOwnTeams(singleplayer);
+			checkJoiningNeedsAnInvitation(singleplayer);
 			checkMoonBendsWithoutMovingTheClock(context, singleplayer);
 			checkDifficultyCeilingIsDerivedNotAssumed(singleplayer);
 			bendTheMoonAndLeaveIt(context, singleplayer, rotated, held);
 			binSomethingAndLeaveIt(context, singleplayer);
+			claimSomethingAndLeaveIt(singleplayer);
 
 			context.takeScreenshot("overhaul-world");
 			save = singleplayer.getWorldSave();
@@ -98,6 +160,7 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 			reopened.getConnection().waitForChunksRender();
 			checkMoonSurvivedTheRestart(context, reopened, rotated, held);
 			checkBinSurvivedTheRestart(reopened);
+			checkClaimSurvivedTheRestart(reopened);
 		}
 	}
 
@@ -984,5 +1047,855 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 		}
 
 		return players.getFirst();
+	}
+
+	// New in this pass: enchantments, anvil jobs, food and the two mob-module additions ----------
+
+	/**
+	 * The two enchantments are pure data pack files, which means they can fail to arrive without
+	 * anything in the mod noticing — the code that reads them just never finds a level above zero.
+	 * Looking them up in the live registry is the only way to know the generated pack actually
+	 * landed, and the tag and supported-item checks are what say they are reachable in play rather
+	 * than merely present.
+	 */
+	private static void checkNewEnchantmentsLoaded(TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			TagKey<Enchantment> inTable = TagKey.create(Registries.ENCHANTMENT,
+					Identifier.withDefaultNamespace("in_enchanting_table"));
+
+			Holder<Enchantment> shrouded = enchantment(server, "overhaul:shrouded");
+			Holder<Enchantment> veinMine = enchantment(server, "overhaul:vein_mine");
+
+			if (!shrouded.is(inTable) || !veinMine.is(inTable)) {
+				throw new AssertionError("Both enchantments should be offered by an enchanting table");
+			}
+
+			if (!shrouded.value().isSupportedItem(new ItemStack(Items.DIAMOND_HELMET))) {
+				throw new AssertionError("Shrouded should go on a helmet");
+			}
+
+			if (!veinMine.value().isSupportedItem(new ItemStack(Items.DIAMOND_PICKAXE))) {
+				throw new AssertionError("Vein Mine should go on a pickaxe");
+			}
+		});
+	}
+
+	/**
+	 * Vein Mine, from both ends: a deposit smaller than the limit goes entirely, and one larger
+	 * than it stops at the limit rather than running away down a seam. The second half is the one
+	 * worth having a test for — an off-by-one there is the difference between thirty-two blocks
+	 * and the whole chunk.
+	 */
+	private static void checkVeinMineTakesTheSeamAndStops(TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			ServerLevel level = player.level();
+			player.gameMode.changeGameModeForPlayer(GameType.SURVIVAL);
+
+			ItemStack pickaxe = new ItemStack(Items.DIAMOND_PICKAXE);
+			pickaxe.enchant(enchantment(server, "overhaul:vein_mine"), 1);
+			player.setItemInHand(InteractionHand.MAIN_HAND, pickaxe);
+
+			// Well above the ground, so nothing the world generated can join the vein and make the
+			// counts below mean something other than what was placed.
+			BlockPos centre = player.blockPosition().offset(6, 12, 6);
+			fill(level, centre.offset(-3, -3, -3), centre.offset(3, 3, 3), Blocks.AIR);
+			fill(level, centre.offset(-1, -1, -1), centre.offset(1, 1, 1), Blocks.COAL_ORE);
+
+			player.gameMode.destroyBlock(centre);
+			int leftInCube = count(level, centre.offset(-1, -1, -1), centre.offset(1, 1, 1), Blocks.COAL_ORE);
+
+			if (leftInCube != 0) {
+				throw new AssertionError("A 27 block deposit is inside the limit and should go entirely, "
+						+ leftInCube + " left");
+			}
+
+			BlockPos start = centre.offset(0, 8, 0);
+			BlockPos end = start.offset(39, 0, 0);
+			fill(level, start.offset(-1, -1, -1), end.offset(1, 1, 1), Blocks.AIR);
+			fill(level, start, end, Blocks.COAL_ORE);
+
+			player.gameMode.destroyBlock(start);
+			int leftInSeam = count(level, start, end, Blocks.COAL_ORE);
+
+			// Thirty-two counts the block the player actually broke, so a forty block seam keeps
+			// eight of them.
+			if (leftInSeam != 8) {
+				throw new AssertionError("A 40 block seam should stop at the 32 block limit, leaving 8; "
+						+ leftInSeam + " left");
+			}
+
+			fill(level, start, end, Blocks.AIR);
+		});
+	}
+
+	/**
+	 * Bottling experience at an anvil, priced in points rather than levels.
+	 *
+	 * <p>The number that matters is the exact experience taken, because the whole feature is a
+	 * promise that a bottle costs what it gives back plus the surcharge. Charging in levels, which
+	 * is what the anvil would do left to itself, would quietly break that at every level boundary.
+	 */
+	private static void checkAnvilBottlesExperience(TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			player.gameMode.changeGameModeForPlayer(GameType.SURVIVAL);
+
+			AnvilMenu menu = anvilFor(player);
+			menu.getSlot(AnvilMenu.INPUT_SLOT).set(PotionContents.createItemStack(Items.POTION, Potions.WATER));
+			menu.getSlot(AnvilMenu.ADDITIONAL_SLOT).set(new ItemStack(Items.LAPIS_LAZULI, 4));
+
+			ItemStack result = menu.getSlot(AnvilMenu.RESULT_SLOT).getItem();
+
+			if (result.getItem() != Items.EXPERIENCE_BOTTLE || result.getCount() != 1) {
+				throw new AssertionError("A water bottle and lapis should make one experience bottle, got " + result);
+			}
+
+			player.giveExperienceLevels(30);
+			int before = Experience.total(player);
+
+			take(menu, player);
+
+			int spent = before - Experience.total(player);
+
+			// Ten experience a bottle, plus the ten percent surcharge, rounded up.
+			if (spent != 11) {
+				throw new AssertionError("A bottle should cost 11 experience, cost " + spent);
+			}
+
+			if (!menu.getSlot(AnvilMenu.INPUT_SLOT).getItem().isEmpty()) {
+				throw new AssertionError("The water bottle should have been used up");
+			}
+
+			expect(menu.getSlot(AnvilMenu.ADDITIONAL_SLOT).getItem(), "minecraft:lapis_lazuli", 3, "the anvil");
+		});
+	}
+
+	/**
+	 * A thrown bottle gives back exactly what the anvil charged for it, less the surcharge.
+	 *
+	 * <p>Vanilla rolls 3 to 11 per bottle, which is fine while bottles only come from witches and
+	 * makes a quoted price meaningless the moment you can buy one. This is the other half of that
+	 * feature and the half a player would notice going wrong, since the anvil would keep charging
+	 * eleven for something worth an average of seven.
+	 */
+	private static void checkThrownBottlesGiveBackWhatTheyCost(ClientGameTestContext context,
+			TestSingleplayerContext singleplayer) {
+		AtomicReference<BlockPos> chamber = new AtomicReference<>();
+
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			ServerLevel level = player.level();
+
+			// Vein mining a coal seam a few checks ago left experience lying around, and orbs are
+			// exactly what this counts, so the slate has to be clean before anything is thrown.
+			level.getEntitiesOfClass(ExperienceOrb.class, new AABB(player.blockPosition()).inflate(64.0))
+					.forEach(ExperienceOrb::discard);
+
+			// Sealed and well away from the player, so nothing wanders in and no orb is collected
+			// before it can be counted.
+			BlockPos floor = player.blockPosition().offset(-20, 8, -20);
+			chamber.set(floor);
+			fill(level, floor.offset(-2, 0, -2), floor.offset(2, 6, 2), Blocks.AIR);
+			fill(level, floor.offset(-2, 0, -2), floor.offset(2, 0, 2), Blocks.STONE);
+
+			ThrownExperienceBottle bottle = new ThrownExperienceBottle(level, player,
+					new ItemStack(Items.EXPERIENCE_BOTTLE));
+			bottle.snapTo(floor.getX() + 0.5, floor.getY() + 4.0, floor.getZ() + 0.5, 0.0F, 90.0F);
+			bottle.setDeltaMovement(0.0, -0.4, 0.0);
+			level.addFreshEntity(bottle);
+		});
+
+		context.waitTicks(40);
+
+		singleplayer.getServer().runOnServer(server -> {
+			ServerLevel level = onlyPlayer(server).level();
+			int total = level.getEntitiesOfClass(ExperienceOrb.class, new AABB(chamber.get()).inflate(6.0))
+					.stream()
+					.mapToInt(ExperienceOrb::getValue)
+					.sum();
+
+			if (total != 10) {
+				throw new AssertionError("A bottle should be worth exactly 10 experience, gave " + total);
+			}
+
+			level.getEntitiesOfClass(ExperienceOrb.class, new AABB(chamber.get()).inflate(6.0))
+					.forEach(ExperienceOrb::discard);
+		});
+	}
+
+	/**
+	 * Splitting the first enchantment off a book and onto a blank one.
+	 *
+	 * <p>"First" has to mean the one the player sees at the top of the tooltip, so this puts
+	 * Sharpness and Unbreaking on one book and expects Sharpness — which is the earlier of the two
+	 * in the game's own tooltip order — to be the one that comes off. The source book keeping the
+	 * rest, rather than being consumed the way the anvil consumes everything else, is the other
+	 * half of what makes the feature worth using.
+	 */
+	private static void checkAnvilSplitsAnEnchantedBook(TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			player.gameMode.changeGameModeForPlayer(GameType.SURVIVAL);
+
+			Holder<Enchantment> sharpness = enchantment(server, "minecraft:sharpness");
+			Holder<Enchantment> unbreaking = enchantment(server, "minecraft:unbreaking");
+
+			ItemEnchantments.Mutable both = new ItemEnchantments.Mutable(ItemEnchantments.EMPTY);
+			both.set(sharpness, 3);
+			both.set(unbreaking, 2);
+
+			ItemStack source = new ItemStack(Items.ENCHANTED_BOOK);
+			source.set(DataComponents.STORED_ENCHANTMENTS, both.toImmutable());
+
+			AnvilMenu menu = anvilFor(player);
+			menu.getSlot(AnvilMenu.INPUT_SLOT).set(source);
+			menu.getSlot(AnvilMenu.ADDITIONAL_SLOT).set(new ItemStack(Items.BOOK));
+
+			ItemStack result = menu.getSlot(AnvilMenu.RESULT_SLOT).getItem();
+			ItemEnchantments split = result.getOrDefault(DataComponents.STORED_ENCHANTMENTS, ItemEnchantments.EMPTY);
+
+			if (result.getItem() != Items.ENCHANTED_BOOK || split.size() != 1 || split.getLevel(sharpness) != 3) {
+				throw new AssertionError("Splitting should give a book carrying only Sharpness III, got " + result);
+			}
+
+			player.giveExperienceLevels(10);
+			int levelsBefore = player.experienceLevel;
+
+			take(menu, player);
+
+			if (levelsBefore - player.experienceLevel != 3) {
+				throw new AssertionError("A split should cost three levels, cost "
+						+ (levelsBefore - player.experienceLevel));
+			}
+
+			ItemEnchantments left = menu.getSlot(AnvilMenu.INPUT_SLOT).getItem()
+					.getOrDefault(DataComponents.STORED_ENCHANTMENTS, ItemEnchantments.EMPTY);
+
+			if (left.size() != 1 || left.getLevel(unbreaking) != 2) {
+				throw new AssertionError("The source book should be left holding Unbreaking II, held " + left);
+			}
+
+			if (!menu.getSlot(AnvilMenu.ADDITIONAL_SLOT).getItem().isEmpty()) {
+				throw new AssertionError("The blank book should have been used up");
+			}
+		});
+	}
+
+	/**
+	 * A glistering melon slice is made of a melon slice and eight gold nuggets and has never been
+	 * edible, which is the whole reason this exists. Checking the component on a fresh stack is
+	 * also the only way to know the default-component rewrite ran at all.
+	 */
+	private static void checkGlisteringMelonIsWorthEating(TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			FoodProperties food = new ItemStack(Items.GLISTERING_MELON_SLICE).get(DataComponents.FOOD);
+
+			if (food == null) {
+				throw new AssertionError("A glistering melon slice should be edible");
+			}
+
+			if (food.nutrition() != 4 || food.saturation() < 9.0F) {
+				throw new AssertionError("Glistering melon should be four hunger and richly saturating, was "
+						+ food.nutrition() + " hunger and " + food.saturation() + " saturation");
+			}
+		});
+	}
+
+	/** The golden baked potato exists and is reachable through the recipe manager, not just registered. */
+	private static void checkGoldenBakedPotatoCrafts(TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			ItemStack nugget = new ItemStack(Items.GOLD_NUGGET);
+			ItemStack potato = new ItemStack(Items.BAKED_POTATO);
+
+			CraftingInput input = CraftingInput.of(3, 3, List.of(
+					nugget, nugget, nugget,
+					nugget, potato, nugget,
+					nugget, nugget, nugget));
+
+			ItemStack result = server.getRecipeManager()
+					.getRecipeFor(RecipeType.CRAFTING, input, server.overworld())
+					.orElseThrow(() -> new AssertionError("No recipe matched a baked potato ringed with nuggets"))
+					.value()
+					.assemble(input);
+
+			if (result.getItem() != item("overhaul:golden_baked_potato")) {
+				throw new AssertionError("Expected a golden baked potato, got " + result);
+			}
+		});
+	}
+
+	/**
+	 * A dispenser pointed at a cow feeds it rather than throwing wheat on the floor.
+	 *
+	 * <p>Driven through the module's own entry point instead of a redstone pulse, because the
+	 * mixin that calls it is already guaranteed to have applied — the game refuses to start if it
+	 * has not — and a test that waits on a scheduled block tick is a test that fails on a slow
+	 * machine for no reason.
+	 */
+	private static void checkDispenserFeedsWhatIsInFrontOfIt(TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			ServerLevel level = player.level();
+
+			BlockPos pos = player.blockPosition().offset(-6, 0, 6);
+			fill(level, pos.offset(-1, -1, -1), pos.offset(3, 2, 1), Blocks.AIR);
+			fill(level, pos.offset(-1, -1, -1), pos.offset(3, -1, 1), Blocks.STONE);
+
+			level.setBlockAndUpdate(pos, Blocks.DISPENSER.defaultBlockState()
+					.setValue(DispenserBlock.FACING, Direction.EAST));
+
+			if (!(level.getBlockEntity(pos) instanceof DispenserBlockEntity dispenser)) {
+				throw new AssertionError("No dispenser where one was just placed");
+			}
+
+			dispenser.setItem(0, new ItemStack(Items.WHEAT, 4));
+
+			Cow cow = EntityTypes.COW.spawn(level, pos.east(), EntitySpawnReason.COMMAND);
+
+			if (cow == null) {
+				throw new AssertionError("Could not spawn a cow in front of the dispenser");
+			}
+
+			try {
+				if (!MobModule.dispenserFed(level, level.getBlockState(pos), pos)) {
+					throw new AssertionError("The dispenser should have fed the cow in front of it");
+				}
+
+				if (!cow.isInLove()) {
+					throw new AssertionError("The cow was fed but is not in love");
+				}
+
+				expect(dispenser.getItem(0), "minecraft:wheat", 3, "the dispenser");
+
+				// A cow already in love is not hungry, so the second pulse has nothing to do and the
+				// dispenser goes back to throwing what it holds.
+				if (MobModule.dispenserFed(level, level.getBlockState(pos), pos)) {
+					throw new AssertionError("A cow already in love should not be fed again");
+				}
+			} finally {
+				cow.discard();
+				level.removeBlock(pos, false);
+			}
+		});
+	}
+
+	/**
+	 * A villager walks towards a held emerald, and stops caring the moment it is put away.
+	 *
+	 * <p>Asserted on the brain's walk target rather than on the villager having moved, because
+	 * "did it get closer" is a question about pathfinding and frame timing, while "was it told to
+	 * come here" is the thing this feature actually decides.
+	 */
+	private static void checkVillagerWalksTowardsAnEmerald(TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			ServerLevel level = player.level();
+
+			BlockPos pos = player.blockPosition().offset(6, 0, 0);
+			fill(level, pos.below(), pos.below(), Blocks.STONE);
+			fill(level, pos, pos.above(), Blocks.AIR);
+
+			Villager villager = EntityTypes.VILLAGER.spawn(level, pos, EntitySpawnReason.COMMAND);
+
+			if (villager == null) {
+				throw new AssertionError("Could not spawn a villager");
+			}
+
+			try {
+				player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.EMERALD));
+				MobModule.leadVillager(villager, level);
+
+				WalkTarget target = villager.getBrain().getMemory(MemoryModuleType.WALK_TARGET)
+						.orElseThrow(() -> new AssertionError("A villager shown an emerald should be walking to it"));
+
+				if (!(target.getTarget() instanceof EntityTracker tracker) || tracker.getEntity() != player) {
+					throw new AssertionError("The villager is walking somewhere that is not the player");
+				}
+
+				player.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
+				villager.getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
+				MobModule.leadVillager(villager, level);
+
+				if (villager.getBrain().hasMemoryValue(MemoryModuleType.WALK_TARGET)) {
+					throw new AssertionError("A villager should stop following once the emerald is put away");
+				}
+			} finally {
+				villager.discard();
+			}
+		});
+	}
+
+	/**
+	 * The added trades have to be both loaded and in the right pool: a trade file the game parsed
+	 * but no profession's tag mentions is a trade no villager will ever offer.
+	 */
+	private static void checkAddedTradesJoinTheVanillaPools(TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			Holder<VillagerTrade> trade = server.registryAccess()
+					.lookupOrThrow(Registries.VILLAGER_TRADE)
+					.get(ResourceKey.create(Registries.VILLAGER_TRADE, Identifier.parse("overhaul:farmer/1/tomato_emerald")))
+					.map(holder -> (Holder<VillagerTrade>) holder)
+					.orElseThrow(() -> new AssertionError("The added farmer trade was not loaded"));
+
+			if (!trade.is(VillagerTradeTags.FARMER_LEVEL_1)) {
+				throw new AssertionError("The added farmer trade is not in the level one farmer pool");
+			}
+		});
+	}
+
+	// Helpers for the checks above -----------------------------------------------------------
+
+	/** An anvil menu over a real anvil, so taking a result behaves the way it does in play. */
+	private static AnvilMenu anvilFor(ServerPlayer player) {
+		ServerLevel level = player.level();
+		BlockPos pos = player.blockPosition().offset(-6, 0, -6);
+		fill(level, pos, pos.above(), Blocks.AIR);
+		level.setBlockAndUpdate(pos, Blocks.ANVIL.defaultBlockState());
+		return new AnvilMenu(1, player.getInventory(), ContainerLevelAccess.create(level, pos));
+	}
+
+	/** Takes whatever is in the result slot, the way clicking it would. */
+	private static void take(AnvilMenu menu, ServerPlayer player) {
+		ItemStack result = menu.getSlot(AnvilMenu.RESULT_SLOT).getItem().copy();
+
+		if (result.isEmpty()) {
+			throw new AssertionError("Nothing in the anvil's result slot to take");
+		}
+
+		if (!menu.getSlot(AnvilMenu.RESULT_SLOT).mayPickup(player)) {
+			throw new AssertionError("The anvil would not let the result be taken");
+		}
+
+		menu.getSlot(AnvilMenu.RESULT_SLOT).set(ItemStack.EMPTY);
+		menu.getSlot(AnvilMenu.RESULT_SLOT).onTake(player, result);
+	}
+
+	private static Holder<Enchantment> enchantment(net.minecraft.server.MinecraftServer server, String id) {
+		return server.registryAccess()
+				.lookupOrThrow(Registries.ENCHANTMENT)
+				.get(ResourceKey.create(Registries.ENCHANTMENT, Identifier.parse(id)))
+				.map(holder -> (Holder<Enchantment>) holder)
+				.orElseThrow(() -> new AssertionError("Enchantment was not loaded: " + id));
+	}
+
+	private static void fill(ServerLevel level, BlockPos from, BlockPos to, Block block) {
+		BlockPos.betweenClosed(from, to).forEach(pos -> level.setBlock(pos, block.defaultBlockState(), 2));
+	}
+
+	private static int count(ServerLevel level, BlockPos from, BlockPos to, Block block) {
+		int found = 0;
+
+		for (BlockPos pos : BlockPos.betweenClosed(from, to)) {
+			if (level.getBlockState(pos).is(block)) {
+				found++;
+			}
+		}
+
+		return found;
+	}
+
+	// Multiplayer: claims, banners, explosions and chunk loaders --------------------------------
+
+	/**
+	 * The whole access ladder in one go: stranger, ally, member.
+	 *
+	 * <p>Run against one player by moving the claim rather than the player — the chunk is given to
+	 * a team the player is not on, then to one they are, then their own team is made an ally of the
+	 * owner. That covers all three rungs without a second client, and it exercises the one method
+	 * every rule in the module funnels through.
+	 */
+	private static void checkClaimsSortVisitorsFromMembers(TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			ServerLevel level = player.level();
+			BlockPos pos = player.blockPosition().offset(0, 20, 0);
+			ChunkPos chunk = ChunkPos.containing(pos);
+
+			run(server, "team add landlords");
+			run(server, "team add tenants");
+			run(server, "team join tenants " + player.getScoreboardName());
+
+			Claims.claim(level, chunk, "landlords");
+
+			try {
+				if (Protection.mayBuild(player, level, pos)) {
+					throw new AssertionError("A stranger should not be able to build in a claim");
+				}
+
+				if (Protection.mayInteract(player, level, pos, Blocks.OAK_DOOR.defaultBlockState())) {
+					throw new AssertionError("A stranger should not be able to open a door in a claim");
+				}
+
+				// An ally may build, and may use anything the owner has not named as an exception.
+				TeamClaims.update(server, "landlords", settings -> settings.withAlly("tenants", true));
+
+				if (!Protection.mayBuild(player, level, pos)) {
+					throw new AssertionError("An ally should be able to build");
+				}
+
+				TeamClaims.update(server, "landlords", settings -> settings.withAllies(
+						settings.allies().withException("#minecraft:doors", true)));
+
+				if (Protection.mayInteract(player, level, pos, Blocks.OAK_DOOR.defaultBlockState())) {
+					throw new AssertionError("An ally should be stopped by an exception the owner named");
+				}
+
+				if (!Protection.mayInteract(player, level, pos, Blocks.CRAFTING_TABLE.defaultBlockState())) {
+					throw new AssertionError("The exception should apply to doors only");
+				}
+
+				// And a member of the owning team is subject to none of it.
+				run(server, "team join landlords " + player.getScoreboardName());
+
+				if (!Protection.mayBuild(player, level, pos)
+						|| !Protection.mayInteract(player, level, pos, Blocks.OAK_DOOR.defaultBlockState())) {
+					throw new AssertionError("A member of the owning team should be unrestricted");
+				}
+			} finally {
+				Claims.release(level, chunk);
+				run(server, "team join tenants " + player.getScoreboardName());
+			}
+		});
+	}
+
+	/**
+	 * Planting a banner takes the chunk, which is the route most players will ever use. Goes
+	 * through the real item so the placement, the mixin that notices it, and the claim rules that
+	 * decide whether it counts are all in the loop.
+	 */
+	private static void checkBannerClaimsTheChunk(TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			ServerLevel level = player.level();
+			player.gameMode.changeGameModeForPlayer(GameType.SURVIVAL);
+
+			BlockPos floor = player.blockPosition().offset(0, 24, 0);
+			ChunkPos chunk = ChunkPos.containing(floor);
+			fill(level, floor.offset(-1, 0, -1), floor.offset(1, 2, 1), Blocks.AIR);
+			level.setBlockAndUpdate(floor, Blocks.STONE.defaultBlockState());
+
+			Claims.release(level, chunk);
+			run(server, "team join tenants " + player.getScoreboardName());
+
+			ItemStack banner = new ItemStack(Items.BANNER.white());
+			player.setItemInHand(InteractionHand.MAIN_HAND, banner);
+
+			BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(floor), Direction.UP, floor, false);
+			InteractionResult result = player.getItemInHand(InteractionHand.MAIN_HAND)
+					.useOn(new UseOnContext(player, InteractionHand.MAIN_HAND, hit));
+
+			try {
+				if (!result.consumesAction()) {
+					throw new AssertionError("The banner was not placed at all: " + result);
+				}
+
+				if (!"tenants".equals(Claims.ownerOf(level, chunk))) {
+					throw new AssertionError("Planting a banner should have claimed the chunk, owner is "
+							+ Claims.ownerOf(level, chunk));
+				}
+			} finally {
+				Claims.release(level, chunk);
+				level.removeBlock(floor.above(), false);
+			}
+		});
+	}
+
+	/**
+	 * TNT is the hole every claim system is tested for: everything else asks who is doing something
+	 * and an explosion has nobody to ask. Checked against an unclaimed chunk in the same breath, so
+	 * a pass cannot come from the explosion having done nothing.
+	 */
+	private static void checkExplosionsSpareClaimedChunks(TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			ServerLevel level = player.level();
+
+			// Centred inside a chunk rather than on the player, who spawns on a chunk corner: a
+			// five-wide cube built there would straddle four chunks and only one of them claimed,
+			// which would make this test fail for a reason that has nothing to do with claims.
+			ChunkPos home = ChunkPos.containing(player.blockPosition());
+			BlockPos claimed = new BlockPos(home.getMiddleBlockX(), player.blockPosition().getY() + 30,
+					home.getMiddleBlockZ());
+			BlockPos open = claimed.offset(32, 0, 0);
+
+			for (BlockPos centre : List.of(claimed, open)) {
+				fill(level, centre.offset(-3, -3, -3), centre.offset(3, 3, 3), Blocks.AIR);
+				fill(level, centre.offset(-2, -2, -2), centre.offset(2, 2, 2), Blocks.DIRT);
+			}
+
+			Claims.claim(level, ChunkPos.containing(claimed), "landlords");
+			Claims.release(level, ChunkPos.containing(open));
+
+			try {
+				level.explode(null, claimed.getX() + 0.5, claimed.getY() + 0.5, claimed.getZ() + 0.5,
+						4.0F, Level.ExplosionInteraction.TNT);
+				level.explode(null, open.getX() + 0.5, open.getY() + 0.5, open.getZ() + 0.5,
+						4.0F, Level.ExplosionInteraction.TNT);
+
+				int leftInClaim = count(level, claimed.offset(-2, -2, -2), claimed.offset(2, 2, 2), Blocks.DIRT);
+				int leftOutside = count(level, open.offset(-2, -2, -2), open.offset(2, 2, 2), Blocks.DIRT);
+
+				if (leftInClaim != 125) {
+					throw new AssertionError("An explosion should take nothing from a claim; "
+							+ (125 - leftInClaim) + " blocks went");
+				}
+
+				if (leftOutside == 125) {
+					throw new AssertionError("The same explosion took nothing outside a claim either, "
+							+ "so this test proves nothing");
+				}
+			} finally {
+				Claims.release(level, ChunkPos.containing(claimed));
+				fill(level, claimed.offset(-3, -3, -3), claimed.offset(3, 3, 3), Blocks.AIR);
+				fill(level, open.offset(-3, -3, -3), open.offset(3, 3, 3), Blocks.AIR);
+			}
+		});
+	}
+
+	/**
+	 * A chunk loader holds its chunk while it stands there and lets go when it comes down.
+	 *
+	 * <p>Asserted against vanilla's own force-load set rather than against this module's
+	 * bookkeeping, because the bookkeeping agreeing with itself would prove nothing: what matters
+	 * is whether the game is actually holding the chunk.
+	 */
+	private static void checkChunkLoaderHoldsItsChunk(TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			ServerLevel level = player.level();
+			Block loader = MultiplayerContent.chunkLoader();
+
+			if (loader == null) {
+				throw new AssertionError("The chunk loader block was never registered");
+			}
+
+			BlockPos pos = player.blockPosition().offset(0, 40, 0);
+			long chunk = ChunkPos.containing(pos).pack();
+
+			if (level.getForceLoadedChunks().contains(chunk)) {
+				throw new AssertionError("That chunk was already force loaded before the test started");
+			}
+
+			level.setBlockAndUpdate(pos, loader.defaultBlockState());
+
+			try {
+				if (!level.getForceLoadedChunks().contains(chunk)) {
+					throw new AssertionError("A placed chunk loader should hold its own chunk");
+				}
+			} finally {
+				level.removeBlock(pos, false);
+			}
+
+			if (level.getForceLoadedChunks().contains(chunk)) {
+				throw new AssertionError("Breaking the loader should have released the chunk");
+			}
+		});
+	}
+
+	/** The loader is reachable in survival, not just registered. */
+	private static void checkChunkLoaderCrafts(TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			ItemStack obsidian = new ItemStack(Items.OBSIDIAN);
+			ItemStack star = new ItemStack(Items.NETHER_STAR);
+			ItemStack eye = new ItemStack(Items.ENDER_EYE);
+			ItemStack nothing = ItemStack.EMPTY;
+
+			CraftingInput input = CraftingInput.of(3, 3, List.of(
+					nothing, eye, nothing,
+					star, obsidian, star,
+					obsidian, obsidian, obsidian));
+
+			ItemStack result = server.getRecipeManager()
+					.getRecipeFor(RecipeType.CRAFTING, input, server.overworld())
+					.orElseThrow(() -> new AssertionError("No recipe matched the chunk loader pattern"))
+					.value()
+					.assemble(input);
+
+			if (result.getItem() != item("overhaul:chunk_loader")) {
+				throw new AssertionError("Expected a chunk loader, got " + result);
+			}
+		});
+	}
+
+	/**
+	 * Deleting a team gives its land back to nobody rather than locking it forever.
+	 *
+	 * <p>Building claims on vanilla teams means vanilla can delete the owner out from under a
+	 * claim, and land owned by a name that no longer refers to anything would be unbuildable by
+	 * everyone and releasable by no one.
+	 */
+	private static void checkDeletingATeamReleasesItsLand(TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			ServerLevel level = player.level();
+			ChunkPos chunk = ChunkPos.containing(player.blockPosition().offset(0, 60, 0));
+
+			run(server, "team add doomed");
+			Claims.claim(level, chunk, "doomed");
+			run(server, "team remove doomed");
+
+			String owner = Claims.ownerOf(level, chunk);
+
+			if (owner != null) {
+				throw new AssertionError("Land held by a deleted team should have been released, "
+						+ "still owned by " + owner);
+			}
+		});
+	}
+
+	/**
+	 * The premise these commands exist for: vanilla's own {@code /team} is shut to ordinary players.
+	 *
+	 * <p>Asserted rather than assumed, because if Mojang ever opened it up the wrappers would be
+	 * redundant, and if the requirement moved off the root literal the gate would quietly be
+	 * somewhere else. Either way this is the test that should start failing.
+	 */
+	private static void checkVanillaTeamCommandIsStillOperatorOnly(TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			CommandSourceStack ordinary = ordinarySource(server);
+
+			if (server.getCommands().getDispatcher().getRoot().getChild("team").canUse(ordinary)) {
+				throw new AssertionError("/team is open to ordinary players now, so the wrappers are moot");
+			}
+
+			if (!server.getCommands().getDispatcher().getRoot().getChild("overhaul").canUse(ordinary)) {
+				throw new AssertionError("/overhaul should be reachable without permissions");
+			}
+		});
+	}
+
+	/**
+	 * A player forming a team, taking land with it, and closing it down again — all through a
+	 * command source with no permissions at all, which is the entire point of these commands.
+	 */
+	private static void checkPlayersCanRunTheirOwnTeams(TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			ServerLevel level = player.level();
+			CommandSourceStack ordinary = ordinarySource(server);
+
+			run(server, "team leave " + player.getScoreboardName());
+
+			server.getCommands().performPrefixedCommand(ordinary, "overhaul claim team create settlers");
+
+			PlayerTeam team = player.getTeam();
+
+			if (team == null || !"settlers".equals(team.getName())) {
+				throw new AssertionError("Creating a team should have put the player on it, they are on " + team);
+			}
+
+			if (!TeamClaims.settings(server, "settlers").isLeader(player)) {
+				throw new AssertionError("Whoever creates a team should lead it");
+			}
+
+			// And leading it is enough to claim, with no operator having touched anything.
+			ChunkPos chunk = ChunkPos.containing(player.blockPosition().offset(0, 70, 0));
+			Claims.release(level, chunk);
+			server.getCommands().performPrefixedCommand(ordinary.withPosition(
+					Vec3.atCenterOf(chunk.getMiddleBlockPosition(player.blockPosition().getY()))),
+					"overhaul claim here");
+
+			if (!"settlers".equals(Claims.ownerOf(level, chunk))) {
+				throw new AssertionError("A team leader should be able to claim, owner is "
+						+ Claims.ownerOf(level, chunk));
+			}
+
+			// Disbanding needs the name typed out, and takes the land with it when it gets it.
+			server.getCommands().performPrefixedCommand(ordinary, "overhaul claim team disband wrongname");
+
+			if (server.getScoreboard().getPlayerTeam("settlers") == null) {
+				throw new AssertionError("Disband should refuse a name that does not match");
+			}
+
+			server.getCommands().performPrefixedCommand(ordinary, "overhaul claim team disband settlers");
+
+			if (server.getScoreboard().getPlayerTeam("settlers") != null) {
+				throw new AssertionError("Disband should have closed the team down");
+			}
+
+			if (Claims.ownerOf(level, chunk) != null) {
+				throw new AssertionError("Disbanding should have released the team's land");
+			}
+		});
+	}
+
+	/**
+	 * Joining by invitation, and the refusal when there is no invitation to redeem. This is the
+	 * half that replaces {@code /team join}, which is the command an operator would otherwise be
+	 * running once per player forever.
+	 */
+	private static void checkJoiningNeedsAnInvitation(TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			CommandSourceStack ordinary = ordinarySource(server);
+
+			run(server, "team leave " + player.getScoreboardName());
+			run(server, "team add homesteaders");
+
+			try {
+				server.getCommands().performPrefixedCommand(ordinary,
+						"overhaul claim team join homesteaders");
+
+				if (player.getTeam() != null) {
+					throw new AssertionError("Joining without an invitation should have been refused");
+				}
+
+				TeamInvites.offer(server, player.getUUID(), "homesteaders");
+				server.getCommands().performPrefixedCommand(ordinary,
+						"overhaul claim team join homesteaders");
+
+				PlayerTeam team = player.getTeam();
+
+				if (team == null || !"homesteaders".equals(team.getName())) {
+					throw new AssertionError("An invited player should have joined, they are on " + team);
+				}
+
+				// One invitation, one join: a redeemed invite must not let them back in later.
+				if (!TeamInvites.pending(server, player.getUUID()).isEmpty()) {
+					throw new AssertionError("The invitation should have been used up");
+				}
+			} finally {
+				run(server, "team leave " + player.getScoreboardName());
+				run(server, "team remove homesteaders");
+			}
+		});
+	}
+
+	/** A command source for the player with no permissions at all, the way an ordinary player has none. */
+	private static CommandSourceStack ordinarySource(net.minecraft.server.MinecraftServer server) {
+		return onlyPlayer(server).createCommandSourceStack().withPermission(PermissionSet.NO_PERMISSIONS);
+	}
+
+	/** Leaves a claim and a team setting behind, to be looked for after the restart. */
+	private static void claimSomethingAndLeaveIt(TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			ServerLevel level = player.level();
+
+			Claims.claim(level, ChunkPos.containing(player.blockPosition().offset(0, 50, 0)), "landlords");
+			TeamClaims.update(server, "landlords", settings -> settings.withAnyMemberMayClaim(false));
+		});
+	}
+
+	/**
+	 * Claims live on the level and team settings live on the server, and the two use different
+	 * halves of the attachment API. Both have to come back, and neither is checkable any other way
+	 * than by shutting the world down and opening it again.
+	 */
+	private static void checkClaimSurvivedTheRestart(TestSingleplayerContext reopened) {
+		reopened.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			ChunkPos chunk = ChunkPos.containing(player.blockPosition().offset(0, 50, 0));
+			String owner = Claims.ownerOf(player.level(), chunk);
+
+			if (!"landlords".equals(owner)) {
+				throw new AssertionError("The claim did not survive the restart, owner is now " + owner);
+			}
+
+			if (TeamClaims.settings(server, "landlords").anyMemberMayClaim()) {
+				throw new AssertionError("The team's claim settings did not survive the restart");
+			}
+		});
 	}
 }

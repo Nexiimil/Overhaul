@@ -8,6 +8,7 @@ import com.overhaul.core.data.RuntimeDataPack;
 import com.overhaul.module.backpack.BackpackModule;
 import com.overhaul.module.magical.MagicalModule;
 import com.overhaul.module.mob.MobModule;
+import com.overhaul.module.multiplayer.MultiplayerModule;
 import com.overhaul.module.inventory.InventoryModule;
 import com.overhaul.module.tasty.TastyModule;
 
@@ -36,6 +37,7 @@ public class Overhaul implements ModInitializer {
 		ModuleManager.register(new MagicalModule());
 		ModuleManager.register(new MobModule());
 		ModuleManager.register(new InventoryModule());
+		ModuleManager.register(new MultiplayerModule());
 
 		ModuleManager.bootstrap();
 		RuntimeDataPack.rebuild();

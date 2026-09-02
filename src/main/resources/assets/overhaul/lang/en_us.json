@@ -16,6 +16,7 @@
   "item.overhaul.fried_egg": "Fried Egg",
   "item.overhaul.honey_glazed_ham": "Honey Glazed Ham",
   "item.overhaul.trail_mix": "Trail Mix",
+  "item.overhaul.golden_baked_potato": "Golden Baked Potato",
   "item.overhaul.tomato_seeds": "Tomato Seeds",
   "item.overhaul.lettuce_seeds": "Lettuce Seeds",
   "item.overhaul.corn_seeds": "Corn Seeds",
@@ -37,6 +38,7 @@
   "block.overhaul.lettuce": "Lettuce Crop",
   "block.overhaul.corn": "Corn Crop",
   "block.overhaul.chili_pepper": "Chili Pepper Crop",
+  "block.overhaul.chunk_loader": "Chunk Loader",
   "tooltip.overhaul.meal.ingredients": "Made with:",
   "tooltip.overhaul.meal.effect": "%s (%s)",
   "tooltip.overhaul.meal.nutrition": "Nutrition %s, saturation %s",
@@ -76,5 +78,7 @@
   "item.overhaul.backpack_upgrade_smithing_template.ingredients": "Copper, iron, gold, diamond or netherite ingot",
   "upgrade.overhaul.backpack_upgrade": "Backpack Upgrade",
   "subtitles.overhaul.backpack.open": "Backpack opens",
-  "subtitles.overhaul.backpack.close": "Backpack closes"
+  "subtitles.overhaul.backpack.close": "Backpack closes",
+  "enchantment.overhaul.shrouded": "Shrouded",
+  "enchantment.overhaul.vein_mine": "Vein Mine"
 }

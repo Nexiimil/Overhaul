@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "overhaul:block/chunk_loader"
+    }
+  }
+}

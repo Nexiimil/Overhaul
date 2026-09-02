@@ -25,6 +25,8 @@ public class MobConfig {
 	public Endermen endermen = new Endermen();
 	public Spiders spiders = new Spiders();
 	public Fleeing fleeing = new Fleeing();
+	public DispenserSettings dispensers = new DispenserSettings();
+	public VillagerSettings villagers = new VillagerSettings();
 
 	public static class Teams {
 		public boolean enabled = true;
@@ -210,5 +212,120 @@ public class MobConfig {
 
 		/** Mobs that never flee, such as bosses and anything that cannot walk away. */
 		public List<String> excluded = new ArrayList<>();
+	}
+
+	/**
+	 * Jobs a dispenser can do that vanilla never taught it.
+	 *
+	 * <p>Everything else in this file retunes a mob; this retunes the block that mobs stand in
+	 * front of, which is the same subject seen from the other side.
+	 */
+	public static class DispenserSettings {
+		/**
+		 * A dispenser holding food feeds an animal in front of it instead of throwing the food on
+		 * the floor. Whether an item is food is asked of the animal, so this covers modded animals
+		 * and modded feed with nothing to configure.
+		 */
+		public boolean feedAnimals = true;
+
+		/** How many blocks out in front of itself a dispenser will reach to feed. */
+		public int feedRange = 1;
+	}
+
+	/**
+	 * Villagers you can move, and villagers worth walking to.
+	 *
+	 * <p>The two halves are the same complaint from opposite ends: a villager is currently
+	 * something you transport by boat and then trade with for a narrow, mostly vanilla list. Making
+	 * them follow a held emerald fixes the first, and putting this mod's own goods in their stock
+	 * fixes the second.
+	 */
+	public static class VillagerSettings {
+		/** Villagers walk towards a player holding one of {@link #leadItems}. */
+		public boolean leadWithEmeralds = true;
+
+		/** Items a villager will follow. Emerald blocks work too, so a stack of them is one slot. */
+		public List<String> leadItems = new ArrayList<>(List.of(
+				"minecraft:emerald",
+				"minecraft:emerald_block"));
+
+		/** How far away a villager will notice the emerald, in blocks. */
+		public double leadRange = 10.0;
+
+		/** Walk speed while following, as a multiplier on their usual pace. */
+		public float leadSpeed = 0.6F;
+
+		/** They stop walking once this close, so a led villager settles rather than crowding you. */
+		public double leadStopDistance = 2.5;
+
+		public boolean leadBabies = true;
+
+		/** Adds the trades below to the vanilla pools. */
+		public boolean expandedTrades = true;
+
+		/**
+		 * Trades added to the vanilla pools, keyed exactly the way the game names a trade:
+		 * {@code <profession>/<level>/<name>}. Each one becomes a real villager trade file, so a
+		 * pack author can add, retune or switch off any of them, and anything not listed here is
+		 * untouched vanilla.
+		 *
+		 * <p>Adding to the pool widens what a villager of that profession might offer rather than
+		 * giving it more trades: the game still picks the usual number per level, now from a longer
+		 * list. A trade naming an item that is not registered — because the module that adds it is
+		 * switched off, or because of a typo — is skipped rather than breaking the pack.
+		 */
+		public Map<String, TradeEntry> addedTrades = new LinkedHashMap<>();
+	}
+
+	/** One villager trade, in the same shape as the vanilla trade files it is written out as. */
+	public static class TradeEntry {
+		public boolean enabled = true;
+
+		/** What the player hands over. */
+		public String wants = "minecraft:emerald";
+		public int wantsCount = 1;
+
+		/** A second input, for trades that take two things. Empty for none. */
+		public String alsoWants = "";
+		public int alsoWantsCount = 1;
+
+		/** What the villager hands back. */
+		public String gives = "";
+		public int givesCount = 1;
+
+		/** Uses before the trade locks until the villager restocks. */
+		public int maxUses = 12;
+
+		/** Experience the villager earns per trade, which is how it levels up. */
+		public int villagerExperience = 10;
+
+		/** How much the price moves with the player's reputation in that village. */
+		public float reputationDiscount = 0.05F;
+
+		public TradeEntry() {
+		}
+
+		public TradeEntry(String wants, int wantsCount, String gives, int givesCount) {
+			this.wants = wants;
+			this.wantsCount = wantsCount;
+			this.gives = gives;
+			this.givesCount = givesCount;
+		}
+
+		public TradeEntry uses(int maxUses) {
+			this.maxUses = maxUses;
+			return this;
+		}
+
+		public TradeEntry experience(int villagerExperience) {
+			this.villagerExperience = villagerExperience;
+			return this;
+		}
+
+		public TradeEntry with(String alsoWants, int alsoWantsCount) {
+			this.alsoWants = alsoWants;
+			this.alsoWantsCount = alsoWantsCount;
+			return this;
+		}
 	}
 }

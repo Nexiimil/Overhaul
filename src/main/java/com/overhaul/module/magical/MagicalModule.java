@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 
-import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.overhaul.Overhaul;
 import com.overhaul.core.ModuleManager;
@@ -23,17 +22,19 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.Containers;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.enchantment.ItemEnchantments;
 import net.minecraft.world.level.Level;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Anvil repairs without a level wall, and bookshelves you stock yourself.
+ * Anvil repairs without a level wall, bookshelves you stock yourself, and two enchantments.
  *
- * <p>Both halves push in the same direction: enchanted gear becomes something you maintain, and
+ * <p>Everything here pushes in the same direction: enchanted gear becomes something you maintain,
  * the enchanting setup around it becomes something you build up deliberately rather than a wall of
- * identical blocks.
+ * identical blocks, and the enchantments themselves become things you can take apart and move
+ * around instead of one-shot rolls you either use as they came or throw away.
  */
 public class MagicalModule implements OverhaulModule {
 	private static @Nullable MagicalConfig config;
@@ -56,6 +57,46 @@ public class MagicalModule implements OverhaulModule {
 
 	public static int booksForEnchantingPower() {
 		return config == null ? 0 : config.bookshelves.booksForEnchantingPower;
+	}
+
+	private static boolean active() {
+		return config != null && ModuleManager.isEnabled("magical");
+	}
+
+	/**
+	 * Whether something wearing this helmet goes unnoticed by endermen.
+	 *
+	 * <p>Called from a mixin woven into a vanilla class, so it has to answer honestly even when the
+	 * module is switched off — which is what the module check in front of the enchantment lookup
+	 * is for.
+	 */
+	public static boolean shrouds(ItemStack helmet) {
+		return active()
+				&& config.enchantments.shrouded.enabled
+				&& OverhaulEnchantments.levelOn(helmet, OverhaulEnchantments.SHROUDED) > 0;
+	}
+
+	public static boolean shroudCalmsProvokedEndermen() {
+		return active() && config.enchantments.shrouded.calmsProvokedEndermen;
+	}
+
+	/**
+	 * Experience every thrown bottle is worth, or a negative number to leave vanilla's roll alone.
+	 *
+	 * <p>A fixed payout is what makes the anvil able to quote a price at all: vanilla's 3-to-11
+	 * roll has no single number the recipe could charge for.
+	 */
+	public static int fixedExperienceBottleValue() {
+		if (!active() || !config.xpBottles.enabled || !config.xpBottles.fixThrownBottleValue) {
+			return -1;
+		}
+
+		return Math.max(1, config.xpBottles.experiencePerBottle);
+	}
+
+	/** The custom anvil job two input slots describe, or null if they describe none of ours. */
+	public static AnvilRecipes.@Nullable Recipe anvilRecipe(Player player, ItemStack input, ItemStack material) {
+		return config == null ? null : AnvilRecipes.match(player, input, material, config);
 	}
 
 	/**
@@ -117,6 +158,11 @@ public class MagicalModule implements OverhaulModule {
 	public void registerBehaviour() {
 		if (config.enchanting.keepLapis) {
 			registerLapisDrop();
+		}
+
+		if (config.enchantments.veinMine.enabled) {
+			PlayerBlockBreakEvents.AFTER.register((level, player, pos, state, blockEntity) ->
+					VeinMine.afterBreak(level, player, pos, state, config.enchantments.veinMine));
 		}
 
 		if (!config.bookshelves.enabled) {
@@ -198,6 +244,8 @@ public class MagicalModule implements OverhaulModule {
 
 	@Override
 	public void buildRecipes(DataPackBuilder pack) {
+		OverhaulEnchantments.build(pack, config);
+
 		if (!config.bookshelves.enabled) {
 			return;
 		}
@@ -213,41 +261,12 @@ public class MagicalModule implements OverhaulModule {
 		}
 
 		if (config.bookshelves.dropsSelf) {
-			pack.addFile(Identifier.withDefaultNamespace("loot_table/blocks/bookshelf.json"), dropsSelfLootTable());
+			pack.addSelfDropLootTable(Identifier.withDefaultNamespace("bookshelf"));
 		}
 
 		if (config.bookshelves.useEmptyTexture) {
 			addEmptyBookshelfTexture();
 		}
-	}
-
-	private static JsonObject dropsSelfLootTable() {
-		JsonObject entry = new JsonObject();
-		entry.addProperty("type", "minecraft:item");
-		entry.addProperty("name", "minecraft:bookshelf");
-
-		JsonObject condition = new JsonObject();
-		condition.addProperty("condition", "minecraft:survives_explosion");
-
-		JsonArray conditions = new JsonArray();
-		conditions.add(condition);
-
-		JsonArray entries = new JsonArray();
-		entries.add(entry);
-
-		JsonObject pool = new JsonObject();
-		pool.addProperty("rolls", 1);
-		pool.addProperty("bonus_rolls", 0);
-		pool.add("entries", entries);
-		pool.add("conditions", conditions);
-
-		JsonArray pools = new JsonArray();
-		pools.add(pool);
-
-		JsonObject table = new JsonObject();
-		table.addProperty("type", "minecraft:block");
-		table.add("pools", pools);
-		return table;
 	}
 
 	/**

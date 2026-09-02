@@ -6,7 +6,9 @@ import java.util.Map;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.overhaul.Overhaul;
 import com.overhaul.core.config.RecipeSpec;
 
@@ -51,6 +53,45 @@ public final class DataPackBuilder {
 
 	public void addAdvancement(Identifier id, JsonElement json) {
 		addFile(ADVANCEMENTS.idToFile(id), json);
+	}
+
+	/**
+	 * A loot table that drops the block itself.
+	 *
+	 * <p>Blocks do not drop anything without one, and "drops itself" is what almost every block
+	 * wants, so writing the same fifteen lines of JSON per block is the only reason this is here.
+	 *
+	 * @param block the block's id, which also names its loot table
+	 */
+	public void addSelfDropLootTable(Identifier block) {
+		JsonObject entry = new JsonObject();
+		entry.addProperty("type", "minecraft:item");
+		entry.addProperty("name", block.toString());
+
+		JsonObject condition = new JsonObject();
+		condition.addProperty("condition", "minecraft:survives_explosion");
+
+		JsonArray conditions = new JsonArray();
+		conditions.add(condition);
+
+		JsonArray entries = new JsonArray();
+		entries.add(entry);
+
+		JsonObject pool = new JsonObject();
+		pool.addProperty("rolls", 1);
+		pool.addProperty("bonus_rolls", 0);
+		pool.add("entries", entries);
+		pool.add("conditions", conditions);
+
+		JsonArray pools = new JsonArray();
+		pools.add(pool);
+
+		JsonObject table = new JsonObject();
+		table.addProperty("type", "minecraft:block");
+		table.add("pools", pools);
+
+		addFile(Identifier.fromNamespaceAndPath(block.getNamespace(),
+				"loot_table/blocks/" + block.getPath() + ".json"), table);
 	}
 
 	public void addFile(Identifier file, JsonElement json) {

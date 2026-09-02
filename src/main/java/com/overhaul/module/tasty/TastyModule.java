@@ -62,6 +62,7 @@ public class TastyModule implements OverhaulModule {
 
 		if (loaded != null) {
 			TastyContent.register(loaded);
+			VanillaFoods.apply(loaded.vanillaFoods);
 		}
 	}
 

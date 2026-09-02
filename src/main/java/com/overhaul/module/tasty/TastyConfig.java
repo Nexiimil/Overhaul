@@ -21,6 +21,16 @@ public class TastyConfig {
 			+ "Ingredient effects decide what a food contributes when it is cooked into a meal.";
 
 	public Map<String, FoodEntry> foods = new LinkedHashMap<>();
+
+	/**
+	 * Food data applied to items that already exist, keyed by item id.
+	 *
+	 * <p>Entries here use exactly the same fields as {@link #foods}, and are how this module makes
+	 * something edible that was not, retunes something that was, or takes food away from an item
+	 * entirely by setting {@code edible} to false. It works on any registered item, so a pack can
+	 * point it at a modded one.
+	 */
+	public Map<String, FoodEntry> vanillaFoods = new LinkedHashMap<>();
 	public Map<String, CropEntry> crops = new LinkedHashMap<>();
 	public Map<String, MealEntry> meals = new LinkedHashMap<>();
 
