@@ -52,6 +52,29 @@ public class MultiplayerConfig {
 		/** Item frames, armour stands, paintings and minecarts inside a claim follow its rules too. */
 		public boolean protectEntities = true;
 
+		/**
+		 * A piston only moves blocks within one claim.
+		 *
+		 * <p>A piston has no owner to ask about, so the rule is about the two ends instead: every
+		 * block it would move or destroy has to belong to whoever owns the chunk the piston is
+		 * standing in. That stops a piston built outside a claim from reaching in, which is the
+		 * oldest way there is of getting through a wall you are not allowed to break.
+		 *
+		 * <p>It is symmetric on purpose, so a claim cannot push blocks out into a neighbour's land
+		 * either. The cost is that a piston on the boundary of your own claim will not push a block
+		 * out into unclaimed ground.
+		 */
+		public boolean protectFromPistons = true;
+
+		/**
+		 * Fire does not spread to blocks inside a claim, and does not burn them away.
+		 *
+		 * <p>Fire already placed still burns and still goes out; what stops is the spreading. A
+		 * campfire, a fireplace and a lit nether portal all behave, while a fire started next door
+		 * stays next door.
+		 */
+		public boolean preventFireSpread = true;
+
 		/** Tells a player whose land they have walked into, on the action bar. */
 		public boolean announceOnEnter = true;
 

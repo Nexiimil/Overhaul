@@ -94,8 +94,9 @@ own. A vanilla horde defuses itself the moment a skeleton clips a creeper. This 
 And on a bad night one comes for you: a **horde** drawn from a single faction, gated on the local
 difficulty that rises in the chunks you actually live in.
 
-Zombies vary in speed and call for help. Skeletons open fire from 26 blocks. Endermen rearrange your
-builds. Anything badly wounded runs.
+Zombies vary in speed and call for help. Skeletons open fire from 26 blocks. Endermen take the solid
+bulk out of your walls and leave the stairs and glass alone, so a base is something you **maintain**.
+Anything badly wounded runs.
 
 Villagers follow a held **emerald**, so moving one is a walk rather than a boat. Their stock is wider
 too. And a dispenser full of wheat **feeds** what is standing in front of it.

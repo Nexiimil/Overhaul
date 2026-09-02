@@ -3,7 +3,7 @@
 	"id": "overhaul",
 	"version": "${version}",
 	"name": "Overhaul",
-	"description": "A modular overhaul: food, backpacks, magic and mobs.",
+	"description": "Several mods in one, none of them required: food, backpacks, magic, mobs, inventory and multiplayer. Every module can be switched off and retuned from JSON.",
 	"authors": ["nexiimil"],
 	"contact": {},
 	"license": "MIT",

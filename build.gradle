@@ -3,6 +3,11 @@ plugins {
 	id 'maven-publish'
 }
 
+// Mod versions are <minecraft version>.<major>.<minor>, so 26.2.0.1 is the first minor on
+// Minecraft 26.2. Composing it here rather than writing it out means a backport to another
+// Minecraft version only has to change minecraft_version and the rest follows.
+version = "${project.minecraft_version}.${project.mod_version}"
+
 base {
 	archivesName = project.archives_base_name
 }

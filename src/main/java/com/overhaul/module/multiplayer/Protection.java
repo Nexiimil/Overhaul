@@ -3,6 +3,7 @@ package com.overhaul.module.multiplayer;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 import com.overhaul.module.multiplayer.TeamClaims.Access;
@@ -101,6 +102,48 @@ public final class Protection {
 	 */
 	public static boolean explosionMayBreak(ServerLevel level, BlockPos pos) {
 		if (!MultiplayerModule.claimsActive() || !MultiplayerModule.claimSettings().protectFromExplosions) {
+			return true;
+		}
+
+		return Claims.ownerAt(level, pos) == null;
+	}
+
+	/**
+	 * Whether a piston standing here may move this set of blocks.
+	 *
+	 * <p>A piston has nobody behind it by the time it fires, so the question cannot be who is
+	 * pushing. It is asked about the two ends instead: everything the piston touches has to belong
+	 * to whoever owns the chunk the piston is in. A piston outside a claim therefore cannot reach
+	 * into one, which is the oldest way through a wall you are not allowed to break.
+	 */
+	public static boolean pistonMayMove(ServerLevel level, BlockPos pistonPos,
+			List<BlockPos> toPush, List<BlockPos> toDestroy) {
+		if (!MultiplayerModule.claimsActive() || !MultiplayerModule.claimSettings().protectFromPistons) {
+			return true;
+		}
+
+		String owner = Claims.ownerAt(level, pistonPos);
+		return sameOwner(level, owner, toPush) && sameOwner(level, owner, toDestroy);
+	}
+
+	private static boolean sameOwner(ServerLevel level, @Nullable String owner, List<BlockPos> positions) {
+		for (BlockPos pos : positions) {
+			if (!Objects.equals(owner, Claims.ownerAt(level, pos))) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Whether fire may take hold of, or burn away, the block at this position.
+	 *
+	 * <p>Only about blocks other than the fire itself, so a fire inside a claim still burns down and
+	 * goes out on its own. What it cannot do is take anything with it.
+	 */
+	public static boolean fireMayChange(ServerLevel level, BlockPos pos) {
+		if (!MultiplayerModule.claimsActive() || !MultiplayerModule.claimSettings().preventFireSpread) {
 			return true;
 		}
 

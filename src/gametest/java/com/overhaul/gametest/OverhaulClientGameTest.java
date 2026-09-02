@@ -53,6 +53,10 @@ import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.level.MoonPhase;
 import net.minecraft.world.level.ChunkPos;
+import com.overhaul.module.mob.MobModule;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.block.DirectionalBlock;
+import net.minecraft.world.level.block.piston.PistonStructureResolver;
 import com.overhaul.module.multiplayer.TeamInvites;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.server.permissions.PermissionSet;
@@ -138,6 +142,9 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 			checkClaimsSortVisitorsFromMembers(singleplayer);
 			checkBannerClaimsTheChunk(singleplayer);
 			checkExplosionsSpareClaimedChunks(singleplayer);
+			checkPistonsStayInTheirOwnClaim(singleplayer);
+			checkFireDoesNotTakeClaimedBlocks(singleplayer);
+			checkEndermenLeaveTheDetailAlone(singleplayer);
 			checkChunkLoaderHoldsItsChunk(singleplayer);
 			checkChunkLoaderCrafts(singleplayer);
 			checkDeletingATeamReleasesItsLand(singleplayer);
@@ -1865,6 +1872,123 @@ public class OverhaulClientGameTest implements FabricClientGameTest {
 	/** A command source for the player with no permissions at all, the way an ordinary player has none. */
 	private static CommandSourceStack ordinarySource(net.minecraft.server.MinecraftServer server) {
 		return onlyPlayer(server).createCommandSourceStack().withPermission(PermissionSet.NO_PERMISSIONS);
+	}
+
+	/**
+	 * A piston outside a claim cannot reach into it, and one wholly inside still works.
+	 *
+	 * <p>The second half is the one that makes this a test rather than a switch: refusing every
+	 * piston near a claim would pass the first assertion and ruin the feature.
+	 */
+	private static void checkPistonsStayInTheirOwnClaim(TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			ServerLevel level = player.level();
+
+			// On a chunk boundary on purpose: the piston sits in one chunk and the block it wants
+			// in the next, which is exactly the geometry the rule exists for.
+			ChunkPos home = ChunkPos.containing(player.blockPosition());
+			int y = player.blockPosition().getY() + 34;
+			BlockPos inside = new BlockPos(home.getMinBlockX(), y, home.getMiddleBlockZ());
+			BlockPos outside = inside.west();
+
+			fill(level, outside.offset(-2, -1, -2), inside.offset(2, 2, 2), Blocks.AIR);
+
+			Claims.claim(level, home, "landlords");
+			Claims.release(level, ChunkPos.containing(outside));
+
+			try {
+				// A piston in the neighbouring chunk, facing east into the claim.
+				level.setBlockAndUpdate(outside, Blocks.PISTON.defaultBlockState()
+						.setValue(DirectionalBlock.FACING, Direction.EAST));
+				level.setBlockAndUpdate(inside, Blocks.STONE.defaultBlockState());
+
+				if (resolves(level, outside, Direction.EAST)) {
+					throw new AssertionError("A piston outside a claim should not be able to push into it");
+				}
+
+				// The same push, entirely inside the claim, is nobody else's business.
+				BlockPos within = inside.east();
+				BlockPos target = within.east();
+				level.setBlockAndUpdate(within, Blocks.PISTON.defaultBlockState()
+						.setValue(DirectionalBlock.FACING, Direction.EAST));
+				level.setBlockAndUpdate(target, Blocks.STONE.defaultBlockState());
+
+				if (!resolves(level, within, Direction.EAST)) {
+					throw new AssertionError("A piston inside a claim should still push blocks inside it");
+				}
+			} finally {
+				Claims.release(level, home);
+				fill(level, outside.offset(-2, -1, -2), inside.offset(2, 2, 2), Blocks.AIR);
+			}
+		});
+	}
+
+	/** Asks a piston at this position whether it could extend, without extending it. */
+	private static boolean resolves(ServerLevel level, BlockPos piston, Direction facing) {
+		return new PistonStructureResolver(level, piston, facing, true).resolve();
+	}
+
+	/**
+	 * Fire does not take claimed blocks, but a fire already burning inside one still goes out.
+	 *
+	 * <p>Checked through the rule rather than by waiting for fire to tick, which is random and
+	 * would make this a test that fails on a slow machine.
+	 */
+	private static void checkFireDoesNotTakeClaimedBlocks(TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			ServerPlayer player = onlyPlayer(server);
+			ServerLevel level = player.level();
+
+			ChunkPos home = ChunkPos.containing(player.blockPosition());
+			BlockPos claimed = new BlockPos(home.getMiddleBlockX(), player.blockPosition().getY() + 38,
+					home.getMiddleBlockZ());
+			BlockPos open = claimed.offset(32, 0, 0);
+
+			Claims.claim(level, home, "landlords");
+			Claims.release(level, ChunkPos.containing(open));
+
+			try {
+				if (Protection.fireMayChange(level, claimed)) {
+					throw new AssertionError("Fire should not be able to take a block inside a claim");
+				}
+
+				if (!Protection.fireMayChange(level, open)) {
+					throw new AssertionError("Fire outside a claim should be left alone");
+				}
+			} finally {
+				Claims.release(level, home);
+			}
+		});
+	}
+
+	/**
+	 * Endermen take the solid bulk of a build and leave the detail.
+	 *
+	 * <p>Stairs, glass and fences being safe is a deliberate line rather than an accident of which
+	 * tags vanilla happened to use: those are the pieces whose absence reads as broken rather than
+	 * as weathered.
+	 */
+	private static void checkEndermenLeaveTheDetailAlone(TestSingleplayerContext singleplayer) {
+		singleplayer.getServer().runOnServer(server -> {
+			if (!MobModule.endermanCanHold(Blocks.STONE.defaultBlockState())) {
+				throw new AssertionError("Endermen should still take solid blocks");
+			}
+
+			for (Block safe : List.of(Blocks.OAK_STAIRS, Blocks.GLASS, Blocks.OAK_FENCE,
+					Blocks.STONE_SLAB, Blocks.COBBLESTONE_WALL, Blocks.LADDER)) {
+				if (MobModule.endermanCanHold(safe.defaultBlockState())) {
+					throw new AssertionError("Endermen should leave " + safe + " alone");
+				}
+			}
+
+			// The blocked list is the other half of the promise, and it is what keeps them off
+			// anything holding your things.
+			if (MobModule.endermanCanHold(Blocks.OBSIDIAN.defaultBlockState())
+					|| MobModule.endermanCanHold(Blocks.CHEST.defaultBlockState())) {
+				throw new AssertionError("Endermen should never take obsidian or a block entity");
+			}
+		});
 	}
 
 	/** Leaves a claim and a team setting behind, to be looked for after the restart. */

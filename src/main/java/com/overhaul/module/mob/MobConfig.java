@@ -183,8 +183,16 @@ public class MobConfig {
 		/** Lets an enderman pick up anything that renders as a full solid block. */
 		public boolean carryAnySolidBlock = true;
 
-		/** Lets an enderman pick up stairs, slabs, glass, walls and fences, which are not solid. */
-		public boolean carryPartialBlocks = true;
+		/**
+		 * Also lets them take stairs, slabs, glass, walls and fences, which are not solid blocks.
+		 *
+		 * <p>Off, because these are the pieces whose absence actually ruins a build. A missing block
+		 * of stone from a wall reads as weathering and gets patched on the next pass; a missing
+		 * stair from a roof or a single pane out of a window reads as broken. Endermen rearranging
+		 * the solid bulk of a base is the intended amount of damage — enough that a base is
+		 * something you maintain, not enough that you stop building with detail.
+		 */
+		public boolean carryPartialBlocks = false;
 
 		/** Never picked up, whatever the rules above say. */
 		public List<String> blocked = new ArrayList<>();
